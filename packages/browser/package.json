@@ -1,0 +1,33 @@
+{
+  "name": "encode-yt-monitor-browser",
+  "version": "0.0.2",
+  "description": "前端稳定性监控 页面监控",
+  "main": "dist/index.global.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "unpkg": "dist/index.global.js",
+  "scripts": {
+    "build": "encode-bundle src/index.ts --format iife,cjs,esm --dts --minify --global-name encodeMonitor",
+    "clean": "rimraf dist node_modules"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "encode",
+    "monitor",
+    "browser"
+  ],
+  "author": "chenghuai",
+  "license": "ISC",
+  "devDependencies": {
+    "encode-bundle": "^1.4.1"
+  },
+  "dependencies": {
+    "encode-yt-monitor-shared": "workspace:^",
+    "encode-yt-monitor-types": "workspace:^",
+    "encode-yt-monitor-utils": "workspace:^",
+    "encode-yt-monitor-core": "workspace:^"
+  }
+}
