@@ -50,6 +50,7 @@ const HandleEvents = {
    */
   handleError(errorEvent: ErrorEvent) {
     const target = errorEvent.target as ResourceErrorTarget;
+    // 通过localName判断是资源加载错误
     if (target.localName) {
       // 资源加载错误 提取有用数据
       const data = resourceTransform(errorEvent.target as ResourceErrorTarget);

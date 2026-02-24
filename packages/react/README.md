@@ -1,3 +1,3 @@
 # encode-yt-monitor-react
 
-印客学院--前端稳定性监控 React 监控
+前端稳定性监控 React 监控

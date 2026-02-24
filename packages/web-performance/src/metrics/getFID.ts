@@ -26,21 +26,14 @@ const getFID = (): Promise<PerformanceEntry> | undefined => {
     // page is loaded in a background tab.
     const eventHandler = (entry: PerformanceEventTiming) => {
       if (entry.startTime < firstHiddenTime.timeStamp) {
-        if (po) {
-          po.disconnect();
-        }
-
+        if (po) po.disconnect();
         resolve(entry);
       }
     };
-
     const po = observe('first-input', eventHandler);
-
     if (po) {
       onHidden(() => {
-        if (po?.takeRecords) {
-          po.takeRecords().map(eventHandler);
-        }
+        if (po?.takeRecords) po.takeRecords().map(eventHandler);
         po.disconnect();
       }, true);
     }

@@ -1,7 +1,7 @@
 {
   "name": "encode-yt-monitor-types",
   "version": "0.0.2",
-  "description": "印客学院--前端稳定性监控 通用类型",
+  "description": "前端稳定性监控 通用类型",
   "main": "dist/index.global.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

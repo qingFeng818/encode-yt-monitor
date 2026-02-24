@@ -166,3 +166,10 @@ export function extractErrorStack(ex: any, level: Severity): ReportDataType {
     stack: stack,
   };
 }
+
+// 它用多种正则分别匹配不同浏览器的堆栈格式，把每一行拆解为
+// func
+// url
+// line
+// column
+// args

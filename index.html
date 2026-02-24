@@ -1,0 +1,40 @@
+<div class="circle">
+  <div class="point"></div>
+</div>
+
+<style>
+  .circle {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: #f0f0f0;
+    position: relative;
+    margin: 50px;
+  }
+
+  .point {
+    width: 10px;
+    height: 10px;
+    background: red;
+    border-radius: 50%;
+    position: absolute;
+
+    /* 核心定位逻辑 */
+    left: 100%; /* 定位到右侧 */
+    top: 50%; /* 垂直居中 */
+    transform: translate(-50%, -50%) /* 精确居中 */ rotate(30deg) /* 顺时针30度（2点钟方向） */
+      translate(0, -100%); /* 向上偏移半径长度 */
+  }
+  .point {
+    /* 使用CSS变量控制尺寸 */
+    --radius: 100px; /* 等于圆形半径 */
+    --angle: 30deg; /* 2点钟方向角度 */
+
+    width: calc(var(--radius) / 10);
+    height: calc(var(--radius) / 10);
+
+    left: calc(50% + var(--radius) * cos(var(--angle)));
+    top: calc(50% - var(--radius) * sin(var(--angle)));
+    transform: translate(-50%, -50%);
+  }
+</style>
