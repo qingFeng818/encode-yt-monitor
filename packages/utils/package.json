@@ -1,6 +1,6 @@
 {
   "name": "encode-yt-monitor-utils",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "description": "前端稳定性监控 通用函数",
   "main": "dist/index.global.js",
   "module": "dist/index.mjs",
