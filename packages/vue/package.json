@@ -1,6 +1,6 @@
 {
   "name": "encode-yt-monitor-vue",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "前端稳定性监控 Vue 监控",
   "main": "dist/index.global.js",
   "module": "dist/index.mjs",

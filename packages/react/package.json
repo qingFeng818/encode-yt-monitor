@@ -1,6 +1,6 @@
 {
   "name": "encode-yt-monitor-react",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "前端稳定性监控 React 监控",
   "main": "dist/index.global.js",
   "module": "dist/index.mjs",
