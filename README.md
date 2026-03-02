@@ -25,11 +25,11 @@
    1. [encode-yt-monitor-browser](https://www.npmjs.com/package/encode-yt-monitor-browser)：前端稳定性监控 页面监控；
    2. [encode-yt-monitor-core](https://www.npmjs.com/package/encode-yt-monitor-core)：前端稳定性监控 核心功能；
    3. [encode-yt-monitor-react](https://www.npmjs.com/package/encode-yt-monitor-react)：前端稳定性监控 React 监控；
-   4. [encode-monitor-vue](https://www.npmjs.com/package/encode-yt-monitor-vue)：前端稳定性监控 Vue 监控；
-   5. [encode-monitor-web](https://www.npmjs.com/package/encode-yt-monitor-web)：前端稳定性监控 Web 监控；
-   6. [encode-monitor-web-performance](https://www.npmjs.com/package/encode-yt-monitor-web-performance)：前端稳定性监控 Web 性能监控；
-   7. [encode-monitor-wx-mini-program](https://www.npmjs.com/package/encode-yt-monitor-wx-mini-program)：前端稳定性监控 小程序监控；
-   8. [encode-monitor-wx-mini-program-performance](https://www.npmjs.com/package/encode-yt-monitor-wx-mini-program-performance)：前端稳定性监控 小程序性能监控；
+   4. [encode-yt-monitor-vue](https://www.npmjs.com/package/encode-yt-monitor-vue)：前端稳定性监控 Vue 监控；
+   5. [encode-yt-monitor-web](https://www.npmjs.com/package/encode-yt-monitor-web)：前端稳定性监控 Web 监控；
+   6. [encode-yt-monitor-web-performance](https://www.npmjs.com/package/encode-yt-monitor-web-performance)：前端稳定性监控 Web 性能监控；
+   7. [encode-yt-monitor-wx-mini-program](https://www.npmjs.com/package/encode-yt-monitor-wx-mini-program)：前端稳定性监控 小程序监控；
+   8. [encode-yt-monitor-wx-mini-program-performance](https://www.npmjs.com/package/encode-yt-monitor-wx-mini-program-performance)：前端稳定性监控 小程序性能监控；
 2. 监控异常收集 node 服务；
 3. 前端监控异常告警&界面展示；
 
