@@ -1,6 +1,6 @@
 {
   "name": "encode-yt-monitor-shared",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "前端稳定性监控 共享参数",
   "main": "dist/index.global.js",
   "module": "dist/index.mjs",
