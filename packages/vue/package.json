@@ -18,7 +18,7 @@
     "monitor",
     "vue"
   ],
-  "author": "chenghuai",
+  "author": "qingfeng",
   "license": "ISC",
   "devDependencies": {
     "encode-bundle": "^1.4.1"

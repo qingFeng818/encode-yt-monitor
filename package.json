@@ -19,7 +19,7 @@
     "encode",
     "monitor"
   ],
-  "author": "chenghuai",
+  "author": "qingfeng",
   "license": "ISC",
   "devDependencies": {
     "@changesets/cli": "^2.26.2",
