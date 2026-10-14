@@ -22,11 +22,7 @@ export interface IBeforeAppAjaxSendConfig {
   setRequestHeader: TSetRequestHeader;
 }
 export interface InitOptions
-  extends SilentEventTypes,
-    HooksTypes,
-    WxSilentEventTypes,
-    WxMiniHooksTypes,
-    BrowserHooksTypes {
+  extends SilentEventTypes, HooksTypes, WxSilentEventTypes, WxMiniHooksTypes, BrowserHooksTypes {
   /**
    * 错误监控的dsn服务器地址
    */

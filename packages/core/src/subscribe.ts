@@ -11,7 +11,7 @@ const handlers: { [key in EventTypes]?: ReplaceCallback[] } = {};
 
 export function subscribeEvent(handler: ReplaceHandler): boolean {
   if (!handler || getFlag(handler.type)) return false;
-  setFlag(handler.type, true);
+  setFlag(handler.type, true); //
   handlers[handler.type] = handlers[handler.type] || [];
   handlers[handler.type].push(handler.callback);
   return true;

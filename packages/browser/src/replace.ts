@@ -35,21 +35,22 @@ function replace(type: EventTypes) {
     case EventTypes.ERROR:
       listenError();
       break;
+    case EventTypes.UNHANDLEDREJECTION:
+      unhandledrejectionReplace();
+      break;
     case EventTypes.CONSOLE:
       consoleReplace();
       break;
     case EventTypes.HISTORY:
       historyReplace();
       break;
-    case EventTypes.UNHANDLEDREJECTION:
-      unhandledrejectionReplace();
+    case EventTypes.HASHCHANGE:
+      listenHashchange();
       break;
     case EventTypes.DOM:
       domReplace();
       break;
-    case EventTypes.HASHCHANGE:
-      listenHashchange();
-      break;
+
     default:
       break;
   }

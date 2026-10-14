@@ -6,6 +6,7 @@ import { initOptions, log } from 'encode-yt-monitor-core';
 import { _global } from 'encode-yt-monitor-utils';
 import { SDK_VERSION, SDK_NAME } from 'encode-yt-monitor-shared';
 import { InitOptions } from 'encode-yt-monitor-types';
+
 function webInit(options: InitOptions = {}): void {
   if (!('XMLHttpRequest' in _global) || options.disabled) return;
   initOptions(options);

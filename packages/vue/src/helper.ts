@@ -73,7 +73,6 @@ function vue3VmHandler(vm: ViewModel) {
   if (vm.$root === vm) {
     componentName = 'root';
   } else {
-    console.log(vm.$options);
     const name = vm.$options && vm.$options.name;
     componentName = name ? 'component <' + name + '>' : 'anonymous component';
   }

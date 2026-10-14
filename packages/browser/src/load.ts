@@ -4,6 +4,7 @@ import { EventTypes, BreadCrumbTypes } from 'encode-yt-monitor-shared';
 import { breadcrumb, handleConsole } from 'encode-yt-monitor-core';
 import { addReplaceHandler } from './replace';
 export function setupReplace(): void {
+  // request event
   addReplaceHandler({
     callback: (data) => {
       HandleEvents.handleHttp(data, BreadCrumbTypes.XHR);
@@ -16,6 +17,8 @@ export function setupReplace(): void {
     },
     type: EventTypes.FETCH,
   });
+
+  // error event
   addReplaceHandler({
     callback: (error) => {
       HandleEvents.handleError(error);
@@ -24,9 +27,25 @@ export function setupReplace(): void {
   });
   addReplaceHandler({
     callback: (data) => {
+      HandleEvents.handleUnhandleRejection(data);
+    },
+    type: EventTypes.UNHANDLEDREJECTION,
+  });
+
+  // console event
+  addReplaceHandler({
+    callback: (data) => {
       handleConsole(data);
     },
     type: EventTypes.CONSOLE,
+  });
+
+  // router event
+  addReplaceHandler({
+    callback: (e: HashChangeEvent) => {
+      HandleEvents.handleHashchange(e);
+    },
+    type: EventTypes.HASHCHANGE,
   });
   addReplaceHandler({
     callback: (data) => {
@@ -35,12 +54,7 @@ export function setupReplace(): void {
     type: EventTypes.HISTORY,
   });
 
-  addReplaceHandler({
-    callback: (data) => {
-      HandleEvents.handleUnhandleRejection(data);
-    },
-    type: EventTypes.UNHANDLEDREJECTION,
-  });
+  // dom event
   addReplaceHandler({
     callback: (data) => {
       const htmlString = htmlElementAsString(data.data.activeElement as HTMLElement);
@@ -54,11 +68,5 @@ export function setupReplace(): void {
       }
     },
     type: EventTypes.DOM,
-  });
-  addReplaceHandler({
-    callback: (e: HashChangeEvent) => {
-      HandleEvents.handleHashchange(e);
-    },
-    type: EventTypes.HASHCHANGE,
   });
 }
