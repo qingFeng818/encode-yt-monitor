@@ -8,6 +8,7 @@
   "unpkg": "dist/index.global.js",
   "scripts": {
     "build": "encode-bundle src/index.ts --format iife,cjs,esm --dts --minify --global-name encodeMonitor",
+    "build:es5": "encode-bundle src/index.ts --format iife,cjs,esm --dts --minify --global-name encodeMonitor --target es5",
     "clean": "rimraf dist node_modules"
   },
   "files": [
