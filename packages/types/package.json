@@ -1,6 +1,6 @@
 {
   "name": "encode-yt-monitor-types",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "前端稳定性监控 通用类型",
   "main": "dist/index.global.js",
   "module": "dist/index.mjs",
