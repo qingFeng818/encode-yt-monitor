@@ -15,7 +15,9 @@
     "pub:es5": "bumpp package.json packages/*/package.json  && pnpm run build:es5 && pnpm -r --filter=./packages/* publish --tag es5",
     "pub:beta": "pnpm run build && pnpm -r --filter=./packages/* publish --tag beta",
     "encode-fe-lint-scan": "encode-fe-lint scan",
-    "encode-fe-lint-fix": "encode-fe-lint fix"
+    "encode-fe-lint-fix": "encode-fe-lint fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "encode",
@@ -37,7 +39,9 @@
     "husky": "^6.0.0",
     "msw": "^0.24.3",
     "open": "^7.3.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "vitest": "^3.2.4",
+    "jsdom": "^26.1.0"
   },
   "publishConfig": {
     "access": "public",

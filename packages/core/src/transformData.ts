@@ -41,7 +41,7 @@ export function httpTransform(data: MonitorHttp): ReportDataType {
     },
     response: {
       status,
-      data: data.responseText,
+      data: data.responseText || '',
     },
   };
 }

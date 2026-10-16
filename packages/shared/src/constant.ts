@@ -1,3 +1,4 @@
+import { Severity } from 'encode-yt-monitor-utils';
 export type voidFun = () => void;
 
 /**
@@ -146,3 +147,10 @@ const globalVar = {
   crossOriginThreshold: 1000,
 };
 export { globalVar };
+
+export type BreadCrumbItem = {
+  type: BreadCrumbTypes;
+  category: BreadCrumbCategory;
+  level: Severity;
+  data: any;
+};
