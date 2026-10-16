@@ -42,7 +42,6 @@ export function handleVueError(
         data = { ...data, ...vue3VmHandler(vm) };
         break;
       default:
-        return;
         break;
     }
   }

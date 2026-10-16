@@ -8,6 +8,7 @@ import {
   isExistProperty,
   variableTypeDetection,
   supportsHistory,
+  isHttpFail,
 } from 'encode-yt-monitor-utils';
 import {
   transportData,
@@ -18,7 +19,7 @@ import {
   subscribeEvent,
 } from 'encode-yt-monitor-core';
 import { EMethods, MonitorHttp, MonitorXMLHttpRequest } from 'encode-yt-monitor-types';
-import { voidFun, EventTypes, HttpTypes, HttpCodes } from 'encode-yt-monitor-shared';
+import { voidFun, EventTypes, HttpTypes } from 'encode-yt-monitor-shared';
 
 function isFilterHttpUrl(url: string) {
   return options.filterXhrUrlRegExp && options.filterXhrUrlRegExp.test(url);
@@ -175,15 +176,32 @@ function fetchReplace(): void {
             // statusText: tempRes.statusText,
             time: sTime,
           };
-          tempRes.text().then((data) => {
-            if (method === EMethods.Post && transportData.isSdkTransportUrl(url)) return;
-            if (isFilterHttpUrl(url)) return;
-            handlerData.responseText = tempRes.status > HttpCodes.UNAUTHORIZED && data;
-            triggerHandlers(EventTypes.FETCH, handlerData);
-          });
+          tempRes
+            .text()
+            .then((data) => {
+              if (method === EMethods.Post && transportData.isSdkTransportUrl(url)) return;
+              if (isFilterHttpUrl(url)) return;
+              // 仅失败请求记录响应体；范围与 handleHttp 的 isError 判定保持一致
+              handlerData.responseText = isHttpFail(tempRes.status) ? data : '';
+              triggerHandlers(EventTypes.FETCH, handlerData);
+            })
+            .catch(() => {
+              // body 读取失败（如响应流被 abort、body 已被消费）时，
+              // 不带 responseText 继续上报，避免丢事件；同时兜住 promise 防止
+              // 这里产生的 unhandledrejection 被 SDK 自身采集
+              if (method === EMethods.Post && transportData.isSdkTransportUrl(url)) return;
+              if (isFilterHttpUrl(url)) return;
+              triggerHandlers(EventTypes.FETCH, handlerData);
+            });
           return res;
         },
         (err: Error) => {
+          // AbortController 主动取消：DOMException 的 name 固定为 'AbortError'，
+          // 属于正常业务行为（搜索防抖、页面跳转等），不上报、不记面包屑，
+          // 但必须继续抛出，保证业务自身的 catch 能收到取消信号
+          if (err && err.name === 'AbortError') {
+            throw err;
+          }
           const eTime = getTimestamp();
           if (method === EMethods.Post && transportData.isSdkTransportUrl(url)) return;
           if (isFilterHttpUrl(url)) return;

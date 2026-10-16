@@ -67,7 +67,6 @@ export function setupReplace(): void {
           level: Severity.Info,
         };
         breadcrumb.push(data);
-        console.log(data, 'dom click');
       }
     },
     type: EventTypes.DOM,
