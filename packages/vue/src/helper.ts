@@ -54,6 +54,7 @@ export function handleVueError(
   transportData.send(data);
 }
 function vue2VmHandler(vm: ViewModel) {
+  if (!vm) return { componentName: 'outside component' };
   let componentName = '';
   if (vm.$root === vm) {
     componentName = 'root';
@@ -73,6 +74,7 @@ function vue2VmHandler(vm: ViewModel) {
   };
 }
 function vue3VmHandler(vm: ViewModel) {
+  if (!vm) return { componentName: 'outside component' };
   let componentName = '';
   if (vm.$root === vm) {
     componentName = 'root';

@@ -48,6 +48,8 @@ export interface ReportDataType extends ICommonDataType {
   // vue
   componentName?: string;
   propsData?: any;
+  // react ErrorBoundary 的组件树堆栈
+  componentStack?: string;
   customTag?: string;
 }
 

@@ -93,6 +93,7 @@ const HandleEvents = {
       args: ErrorTypes.UNKNOWN,
       line: lineno,
       col: colno,
+      column: colno,
     };
     return {
       url,

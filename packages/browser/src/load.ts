@@ -60,13 +60,13 @@ export function setupReplace(): void {
       const ele = data.data.target as HTMLElement;
       const htmlString = htmlElementAsString(ele);
       if (htmlString) {
-        const data = {
+        const breadcrumbData = {
           type: BreadCrumbTypes.CLICK,
           category: breadcrumb.getCategory(BreadCrumbTypes.CLICK),
           data: htmlString,
           level: Severity.Info,
         };
-        breadcrumb.push(data);
+        breadcrumb.push(breadcrumbData);
       }
     },
     type: EventTypes.DOM,
