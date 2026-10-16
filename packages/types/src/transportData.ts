@@ -43,7 +43,7 @@ export interface ReportDataType extends ICommonDataType {
   };
   response?: {
     status: number;
-    data: string;
+    data: string | boolean;
   };
   // vue
   componentName?: string;

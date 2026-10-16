@@ -129,23 +129,24 @@ export function extractErrorStack(ex: any, level: Severity): ReportDataType {
       };
     } else if ((parts = gecko.exec(lines[i]))) {
       const isEval = parts[3] && parts[3].indexOf(' > eval') > -1;
+      let geckoColumn: number | null = parts[5] ? +parts[5] : null;
       if (isEval && (submatch = geckoEval.exec(parts[3]))) {
         parts[3] = submatch[1];
         parts[4] = submatch[2];
-        parts[5] = null; // no column when eval
+        // no column when eval
       } else if (i === 0 && !parts[5] && typeof ex.columnNumber !== 'undefined') {
         // FireFox uses this awesome columnNumber property for its top frame
         // Also note, Firefox's column number is 0-based and everything else expects 1-based,
         // so adding 1
         // NOTE: this hack doesn't work if top-most frame is eval
-        stack[0].column = ex.columnNumber + 1;
+        geckoColumn = ex.columnNumber + 1;
       }
       element = {
         url: parts[3],
         func: parts[1] || ErrorTypes.UNKNOWN_FUNCTION,
         args: parts[2] ? parts[2].split(',') : [],
         line: parts[4] ? +parts[4] : null,
-        column: parts[5] ? +parts[5] : null,
+        column: geckoColumn,
       };
     } else {
       continue;

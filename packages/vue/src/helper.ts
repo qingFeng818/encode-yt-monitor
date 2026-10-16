@@ -4,6 +4,8 @@ import {
   getTimestamp,
   variableTypeDetection,
   Severity,
+  isError,
+  extractErrorStack,
 } from 'encode-yt-monitor-utils';
 import { ErrorTypes, BreadCrumbTypes } from 'encode-yt-monitor-shared';
 import { ViewModel, VueInstance } from './types';
@@ -19,13 +21,16 @@ export function handleVueError(
   Vue: VueInstance,
 ): void {
   const version = Vue?.version || Vue.config?.globalProperties?.$vue?.version || '3';
+  // 将 err.stack 原始字符串解析为结构化栈帧数组，与 window error、Promise 错误保持同一格式
+  const parsedError = isError(err) ? extractErrorStack(err, level) : null;
   let data: ReportDataType = {
     type: ErrorTypes.VUE_ERROR,
     message: `${err.message}(${info})`,
     level,
     url: getLocationHref(),
     name: err.name,
-    stack: err.stack || [],
+    // 解析成功用结构化数组；解析失败（正则不匹配/无 stack）兜底保留原始字符串
+    stack: parsedError?.stack || err.stack || [],
     time: getTimestamp(),
   };
   if (variableTypeDetection.isString(version)) {

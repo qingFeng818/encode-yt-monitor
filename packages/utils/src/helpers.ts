@@ -198,7 +198,7 @@ export function getBigVersion(version: string) {
 }
 
 export function isHttpFail(code: number) {
-  return code === 0 || code === HttpCodes.BAD_REQUEST || code > HttpCodes.UNAUTHORIZED;
+  return code === 0 || code === HttpCodes.BAD_REQUEST || code >= HttpCodes.UNAUTHORIZED;
 }
 
 /**

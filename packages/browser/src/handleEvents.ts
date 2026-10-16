@@ -14,6 +14,7 @@ import {
   extractErrorStack,
   unknownToString,
   Severity,
+  isHttpFail,
 } from 'encode-yt-monitor-utils';
 import { ReportDataType, Replace, MonitorHttp, ResourceErrorTarget } from 'encode-yt-monitor-types';
 
@@ -22,10 +23,7 @@ const HandleEvents = {
    * 处理xhr、fetch回调
    */
   handleHttp(data: MonitorHttp, type: BreadCrumbTypes): void {
-    const isError =
-      data.status === 0 ||
-      data.status === HttpCodes.BAD_REQUEST ||
-      data.status > HttpCodes.UNAUTHORIZED;
+    const isError = isHttpFail(Number(data.status));
     const result = httpTransform(data);
     breadcrumb.push({
       type,
