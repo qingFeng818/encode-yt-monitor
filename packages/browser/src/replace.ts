@@ -272,10 +272,10 @@ function domReplace(): void {
   on(
     _global.document,
     'click',
-    function () {
+    function (e: Element) {
       clickThrottle(EventTypes.DOM, {
         category: 'click',
-        data: this,
+        data: e,
       });
     },
     true,

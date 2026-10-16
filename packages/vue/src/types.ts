@@ -15,6 +15,9 @@ export interface VueConfiguration {
   ignoredElements: (string | RegExp)[];
   keyCodes: { [key: string]: number | number[] };
   async: boolean;
+  globalProperties: {
+    $vue: VueInstance;
+  };
 }
 export interface ViewModel {
   [key: string]: any;

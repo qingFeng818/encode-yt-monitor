@@ -57,14 +57,17 @@ export function setupReplace(): void {
   // dom event
   addReplaceHandler({
     callback: (data) => {
-      const htmlString = htmlElementAsString(data.data.activeElement as HTMLElement);
+      const ele = data.data.target as HTMLElement;
+      const htmlString = htmlElementAsString(ele);
       if (htmlString) {
-        breadcrumb.push({
+        const data = {
           type: BreadCrumbTypes.CLICK,
           category: breadcrumb.getCategory(BreadCrumbTypes.CLICK),
           data: htmlString,
           level: Severity.Info,
-        });
+        };
+        breadcrumb.push(data);
+        console.log(data, 'dom click');
       }
     },
     type: EventTypes.DOM,

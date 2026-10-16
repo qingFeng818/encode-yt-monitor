@@ -18,7 +18,7 @@ export function handleVueError(
   breadcrumbLevel: Severity,
   Vue: VueInstance,
 ): void {
-  const version = Vue?.version;
+  const version = Vue?.version || Vue.config?.globalProperties?.$vue?.version || '3';
   let data: ReportDataType = {
     type: ErrorTypes.VUE_ERROR,
     message: `${err.message}(${info})`,
