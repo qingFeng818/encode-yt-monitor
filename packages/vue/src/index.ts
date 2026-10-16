@@ -10,7 +10,9 @@ const MonitorVue = {
     if (getFlag(EventTypes.VUE) || !Vue || !Vue.config) return;
     setFlag(EventTypes.VUE, true);
     // vue 提供 warnHandler errorHandler报错信息
+    const originalErrorHandler = Vue.config.errorHandler;
     Vue.config.errorHandler = function (err: Error, vm: ViewModel, info: string): void {
+      originalErrorHandler.call(this, err, vm, info);
       handleVueError.apply(null, [err, vm, info, Severity.Normal, Severity.Error, Vue]);
       if (hasConsole && !Vue.config.silent) {
         silentConsoleScope(() => {

@@ -99,24 +99,38 @@ function xhrReplace(): void {
         this.setRequestHeader(headerFieldName, traceId);
       });
       options.beforeAppAjaxSend && options.beforeAppAjaxSend({ method, url }, this);
-      on(this, 'loadend', function (this: MonitorXMLHttpRequest) {
-        if (
-          (method === EMethods.Post && transportData.isSdkTransportUrl(url)) ||
-          isFilterHttpUrl(url)
-        )
-          return;
-        const { responseType, response, status } = this;
-        this.monitor_xhr.reqData = args[0];
-        const eTime = getTimestamp();
-        this.monitor_xhr.time = this.monitor_xhr.sTime;
-        this.monitor_xhr.status = status;
-        if (['', 'json', 'text'].indexOf(responseType) !== -1) {
-          this.monitor_xhr.responseText =
-            typeof response === 'object' ? JSON.stringify(response) : response;
-        }
-        this.monitor_xhr.elapsedTime = eTime - this.monitor_xhr.sTime;
-        triggerHandlers(EventTypes.XHR, this.monitor_xhr);
-      });
+      on(
+        this,
+        'abort',
+        function (this: MonitorXMLHttpRequest) {
+          this.monitor_xhr && (this.monitor_xhr.isAbort = true);
+        },
+        { once: true },
+      );
+      on(
+        this,
+        'loadend',
+        function (this: MonitorXMLHttpRequest) {
+          if (this.monitor_xhr.isAbort) return;
+          if (
+            (method === EMethods.Post && transportData.isSdkTransportUrl(url)) ||
+            isFilterHttpUrl(url)
+          )
+            return;
+          const { responseType, response, status } = this;
+          this.monitor_xhr.reqData = args[0];
+          const eTime = getTimestamp();
+          this.monitor_xhr.time = this.monitor_xhr.sTime;
+          this.monitor_xhr.status = status;
+          if (['', 'json', 'text'].indexOf(responseType) !== -1) {
+            this.monitor_xhr.responseText =
+              typeof response === 'object' ? JSON.stringify(response) : response;
+          }
+          this.monitor_xhr.elapsedTime = eTime - this.monitor_xhr.sTime;
+          triggerHandlers(EventTypes.XHR, this.monitor_xhr);
+        },
+        { once: true },
+      );
       originalSend.apply(this, args);
     };
   });
@@ -230,6 +244,7 @@ lastHref = getLocationHref();
 function historyReplace(): void {
   if (!supportsHistory()) return;
   const oldOnpopstate = _global.onpopstate;
+
   _global.onpopstate = function (this: WindowEventHandlers, ...args: any[]): any {
     const to = getLocationHref();
     const from = lastHref;

@@ -17,6 +17,7 @@ export interface MonitorHttp {
   url?: string;
   status?: number;
   reqData?: any;
+  isAbort?: boolean;
   // statusText?: string
   sTime?: number;
   elapsedTime?: number;
