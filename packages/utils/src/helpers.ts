@@ -197,8 +197,13 @@ export function getBigVersion(version: string) {
   return Number(version.split('.')[0]);
 }
 
+/**
+ * 是否为需要上报的失败请求。
+ * 0 表示网络层失败（跨域/域名不存在/超时/abort 后的空状态），
+ * 其余 4xx/5xx 一律视为失败（HTTP 状态码为整数，>= 400 与「400 或 >= 401」等价）。
+ */
 export function isHttpFail(code: number) {
-  return code === 0 || code === HttpCodes.BAD_REQUEST || code >= HttpCodes.UNAUTHORIZED;
+  return code === 0 || code >= HttpCodes.BAD_REQUEST;
 }
 
 /**

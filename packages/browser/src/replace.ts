@@ -123,7 +123,9 @@ function xhrReplace(): void {
           const eTime = getTimestamp();
           this.monitor_xhr.time = this.monitor_xhr.sTime;
           this.monitor_xhr.status = status;
-          if (['', 'json', 'text'].indexOf(responseType) !== -1) {
+          // 仅失败请求记录响应体，与 fetch 拦截保持一致，
+          // 避免成功请求把大 body 写进面包屑（面包屑会随每次上报一起发送）
+          if (isHttpFail(status) && ['', 'json', 'text'].indexOf(responseType) !== -1) {
             this.monitor_xhr.responseText =
               typeof response === 'object' ? JSON.stringify(response) : response;
           }
@@ -144,7 +146,8 @@ function fetchReplace(): void {
   replaceOld(_global, EventTypes.FETCH, (originalFetch: voidFun) => {
     return function (url: string, config: Partial<Request> = {}): void {
       const sTime = getTimestamp();
-      const method = (config && config.method) || 'GET';
+      // 统一大写，保证 xhr/fetch 生成的 name（`${type}--${method}`）与去重指纹一致（XHR 侧已 toUpperCase）
+      const method = String((config && config.method) || 'GET').toUpperCase();
       let handlerData: MonitorHttp = {
         type: HttpTypes.FETCH,
         method,

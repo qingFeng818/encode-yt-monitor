@@ -249,19 +249,16 @@ const HandleNetworkEvents = {
       result.message = data.errMsg;
     }
     const type = BreadCrumbTypes.XHR;
+    const isError = isHttpFail(data.status);
+    // 与浏览器端保持一致：每个请求只记一条面包屑（成功 Info(http)、失败 Error(exception)），
+    // 避免同一次失败占用两条 maxBreadcrumbs 名额且内容重复
     breadcrumb.push({
       type,
-      category: breadcrumb.getCategory(type),
+      category: breadcrumb.getCategory(isError ? BreadCrumbTypes.CODE_ERROR : type),
       data: result,
-      level: Severity.Info,
+      level: isError ? Severity.Error : Severity.Info,
     });
-    if (isHttpFail(data.status)) {
-      breadcrumb.push({
-        type,
-        category: breadcrumb.getCategory(BreadCrumbTypes.CODE_ERROR),
-        data: { ...result },
-        level: Severity.Error,
-      });
+    if (isError) {
       transportData.send(result);
     }
   },

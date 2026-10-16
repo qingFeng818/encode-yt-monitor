@@ -1,4 +1,4 @@
-import { BreadCrumbTypes, ErrorTypes, ERROR_TYPE_RE, HttpCodes } from 'encode-yt-monitor-shared';
+import { BreadCrumbTypes, ErrorTypes, ERROR_TYPE_RE, HttpTypes } from 'encode-yt-monitor-shared';
 import {
   transportData,
   breadcrumb,
@@ -18,28 +18,33 @@ import {
 } from 'encode-yt-monitor-utils';
 import { ReportDataType, Replace, MonitorHttp, ResourceErrorTarget } from 'encode-yt-monitor-types';
 
+/** data.type（拦截层注入的 http 类型）-> 面包屑类型 */
+const HTTP_TYPE_TO_BREADCRUMB: Record<string, BreadCrumbTypes> = {
+  [HttpTypes.XHR]: BreadCrumbTypes.XHR,
+  [HttpTypes.FETCH]: BreadCrumbTypes.FETCH,
+};
+
 const HandleEvents = {
   /**
    * 处理xhr、fetch回调
+   * @param data 拦截层构造的请求数据
+   * @param type 面包屑类型兜底值；正常情况下以 data.type 为准，避免两处来源写不一致
    */
-  handleHttp(data: MonitorHttp, type: BreadCrumbTypes): void {
+  handleHttp(data: MonitorHttp, type?: BreadCrumbTypes): void {
     const isError = isHttpFail(Number(data.status));
     const result = httpTransform(data);
+    // 面包屑类型以 data.type 为唯一来源，入参仅在 data.type 无法识别时兜底
+    const breadcrumbType = HTTP_TYPE_TO_BREADCRUMB[data.type] || type;
+    // 每个请求只记一条面包屑：成功 Info(http)，失败 Error(exception)，
+    // 避免同一次失败占用两条 maxBreadcrumbs 名额且内容重复
     breadcrumb.push({
-      type,
-      category: breadcrumb.getCategory(type),
+      type: breadcrumbType,
+      category: breadcrumb.getCategory(isError ? BreadCrumbTypes.CODE_ERROR : breadcrumbType),
       data: { ...result },
-      level: Severity.Info,
+      level: isError ? Severity.Error : Severity.Info,
       time: data.time,
     });
     if (isError) {
-      breadcrumb.push({
-        type,
-        category: breadcrumb.getCategory(BreadCrumbTypes.CODE_ERROR),
-        data: { ...result },
-        level: Severity.Error,
-        time: data.time,
-      });
       transportData.send(result);
     }
   },

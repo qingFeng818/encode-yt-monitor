@@ -88,6 +88,15 @@ export interface InitOptions
    * 最多可重复上报同一个错误的次数
    */
   maxDuplicateCount?: number;
+  /**
+   * 同一个错误达到 maxDuplicateCount 后，间隔多久才允许重新上报（单位：小时），默认 24
+   */
+  errorIntervalTime?: number;
+  /**
+   * 错误指纹去重缓存的最大条目数，默认 1000，超过后按 LRU 淘汰；
+   * 用于避免长生命周期页面（SPA / 后台系统）中「只增不减」导致的常驻内存增长，<=0 表示不限制条目数
+   */
+  maxErrorNumberSize?: number;
 }
 
 export interface HooksTypes {

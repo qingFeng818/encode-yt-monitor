@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HandleEvents } from '../../packages/browser/src/handleEvents';
-import { breadcrumb, transportData } from 'encode-yt-monitor-core';
+import { breadcrumb, transportData, HTTP_BODY_MAX_LENGTH } from 'encode-yt-monitor-core';
 import {
   BreadCrumbCategory,
   BreadCrumbTypes,
@@ -164,6 +164,7 @@ describe('HTTP 错误（XHR / fetch → HTTP_ERROR）', () => {
       { status: 401, span: SpanStatus.Unauthenticated },
       { status: 403, span: SpanStatus.PermissionDenied },
       { status: 404, span: SpanStatus.NotFound },
+      { status: 405, span: SpanStatus.InvalidArgument },
       { status: 409, span: SpanStatus.AlreadyExists },
       { status: 413, span: SpanStatus.FailedPrecondition },
       { status: 429, span: SpanStatus.ResourceExhausted },
@@ -195,17 +196,35 @@ describe('HTTP 错误（XHR / fetch → HTTP_ERROR）', () => {
       expect(payloadOf(sendSpy).level).toBe(Severity.Low);
     });
 
-    it('响应体缺失时不抛错，但 response.data 不会兜底为空串（记录当前实现的不对称）', () => {
+    it('请求体/响应体缺失时统一兜底为空串，且不抛错', () => {
       expect(() =>
         HandleEvents.handleHttp(
-          buildHttp({ status: 500, responseText: undefined }),
+          buildHttp({ status: 500, reqData: undefined, responseText: undefined }),
           BreadCrumbTypes.XHR,
         ),
       ).not.toThrow();
       const payload = payloadOf(sendSpy);
-      // request.data 有 `|| ''` 兜底，response.data 直接透传
       expect(payload.request.data).toBe('');
-      expect(payload.response.data).toBeUndefined();
+      expect(payload.response.data).toBe('');
+    });
+
+    it('超长请求体/响应体会被截断到 HTTP_BODY_MAX_LENGTH', () => {
+      const big = 'y'.repeat(HTTP_BODY_MAX_LENGTH + 500);
+      HandleEvents.handleHttp(
+        buildHttp({ status: 500, reqData: big, responseText: big }),
+        BreadCrumbTypes.XHR,
+      );
+      const payload = payloadOf(sendSpy);
+      expect(payload.request.data).toContain(`截取前${HTTP_BODY_MAX_LENGTH}个字符`);
+      expect(payload.response.data).toContain(`截取前${HTTP_BODY_MAX_LENGTH}个字符`);
+      expect(payload.request.data.length).toBeLessThan(big.length);
+    });
+
+    it('FormData 等无法 JSON 化的请求体退化为类型描述，而不是 {}', () => {
+      const formData = new FormData();
+      formData.append('field', 'value');
+      HandleEvents.handleHttp(buildHttp({ status: 500, reqData: formData }), BreadCrumbTypes.XHR);
+      expect(payloadOf(sendSpy).request.data).toBe('[object FormData]');
     });
   });
 
@@ -221,7 +240,7 @@ describe('HTTP 错误（XHR / fetch → HTTP_ERROR）', () => {
       );
     });
 
-    it('成功请求也会把请求体/响应体写入面包屑（XHR 未截断，记录当前行为）', () => {
+    it('成功请求：body 仍会进入面包屑，但统一按 HTTP_BODY_MAX_LENGTH 截断', () => {
       const bigBody = 'x'.repeat(5000);
       HandleEvents.handleHttp(
         buildHttp({ status: 200, reqData: '{"big":"payload"}', responseText: bigBody }),
@@ -232,35 +251,25 @@ describe('HTTP 错误（XHR / fetch → HTTP_ERROR）', () => {
       const pushed = pushedOf(pushSpy);
       expect(pushed.level).toBe(Severity.Info);
       expect(pushed.category).toBe(BreadCrumbCategory.HTTP);
-      // 注意：成功请求的完整响应体也进入了面包屑（最多 10 条）→ 上报 payload 膨胀风险
-      expect(pushed.data.response.data).toBe(bigBody);
+      // 是否记录成功请求的响应体由拦截层决定（xhr/fetch 现在都只在失败时记录）；
+      // handleHttp 只负责统一截断，避免大 body 撑爆面包屑与上报载荷
+      expect(pushed.data.response.data).toContain(`截取前${HTTP_BODY_MAX_LENGTH}个字符`);
+      expect(pushed.data.response.data.length).toBeLessThan(bigBody.length);
       expect(pushed.data.request.data).toBe('{"big":"payload"}');
     });
   });
 
   describe('面包屑（breadcrumb）行为', () => {
-    it('失败请求：Info(http) + Error(exception) 两条同名面包屑，数据一致', () => {
+    it('失败请求：只记一条 Error(exception) 面包屑（不再重复占用名额）', () => {
       HandleEvents.handleHttp(buildHttp({ status: 500, time: 111 }), BreadCrumbTypes.XHR);
 
-      expect(pushSpy).toHaveBeenCalledTimes(2);
-      const first = pushedOf(pushSpy, 0);
-      const second = pushedOf(pushSpy, 1);
-
-      expect(first).toMatchObject({
-        type: BreadCrumbTypes.XHR,
-        category: BreadCrumbCategory.HTTP,
-        level: Severity.Info,
-        time: 111,
-      });
-      expect(second).toMatchObject({
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+      expect(pushedOf(pushSpy)).toMatchObject({
         type: BreadCrumbTypes.XHR,
         category: BreadCrumbCategory.EXCEPTION,
         level: Severity.Error,
         time: 111,
       });
-      // 两条面包屑携带同一份 result 快照（结构相同，但是两次独立浅拷贝）
-      expect(first.data).toEqual(second.data);
-      expect(first.data).not.toBe(second.data);
     });
 
     it('成功请求：仅一条 Info(http) 面包屑', () => {
@@ -272,16 +281,23 @@ describe('HTTP 错误（XHR / fetch → HTTP_ERROR）', () => {
       });
     });
 
-    it('type 入参决定面包屑类型，data.type 决定上报的 name / httpType', () => {
+    it('面包屑类型以 data.type 为唯一来源，入参仅在无法识别时兜底', () => {
+      // 故意传入与 data.type 不一致的入参，data.type 应胜出
       HandleEvents.handleHttp(
         buildHttp({ type: HttpTypes.XHR, status: 500 }),
         BreadCrumbTypes.FETCH,
       );
 
-      expect(pushedOf(pushSpy).type).toBe(BreadCrumbTypes.FETCH);
-      expect(pushedOf(pushSpy).category).toBe(BreadCrumbCategory.HTTP);
+      expect(pushedOf(pushSpy).type).toBe(BreadCrumbTypes.XHR);
       expect(payloadOf(sendSpy).name).toBe('xhr--GET');
       expect(payloadOf(sendSpy).request.httpType).toBe(HttpTypes.XHR);
+
+      // data.type 无法识别时回退到入参
+      HandleEvents.handleHttp(
+        { ...buildHttp({ status: 500 }), type: 'unknown' as unknown as HttpTypes },
+        BreadCrumbTypes.FETCH,
+      );
+      expect(pushedOf(pushSpy, 1).type).toBe(BreadCrumbTypes.FETCH);
     });
   });
 
@@ -308,24 +324,26 @@ describe('HTTP 错误（XHR / fetch → HTTP_ERROR）', () => {
       expect(payload.time).toBe(456);
     });
 
-    it('reqData 为非字符串（对象等）时原样透传，不做序列化或截断', () => {
-      const formLike = { field: 'value' } as any;
-      HandleEvents.handleHttp(buildHttp({ status: 500, reqData: formLike }), BreadCrumbTypes.XHR);
-      expect(payloadOf(sendSpy).request.data).toBe(formLike);
+    it('reqData 为非字符串（对象）时序列化为 JSON 字符串', () => {
+      HandleEvents.handleHttp(
+        buildHttp({ status: 500, reqData: { field: 'value' } }),
+        BreadCrumbTypes.XHR,
+      );
+      expect(payloadOf(sendSpy).request.data).toBe('{"field":"value"}');
     });
   });
 
-  describe('边界与鲁棒性（记录当前实现）', () => {
-    it('status 为 0 时按 elapsedTime 与阈值判定（<= 阈值算跨域）', () => {
-      // crossOriginThreshold 默认 1000
-      HandleEvents.handleHttp(buildHttp({ status: 0, elapsedTime: 1000 }), BreadCrumbTypes.XHR);
+  describe('边界与鲁棒性', () => {
+    it('status 为 0 时按 elapsedTime 与阈值判定（< 阈值算跨域）', () => {
+      // crossOriginThreshold 默认 1000；小于阈值视为快速失败（跨域/域名不存在）
+      HandleEvents.handleHttp(buildHttp({ status: 0, elapsedTime: 999 }), BreadCrumbTypes.XHR);
       expect(payloadOf(sendSpy, 0).message).toContain('跨域');
 
-      HandleEvents.handleHttp(buildHttp({ status: 0, elapsedTime: 1001 }), BreadCrumbTypes.XHR);
+      HandleEvents.handleHttp(buildHttp({ status: 0, elapsedTime: 1000 }), BreadCrumbTypes.XHR);
       expect(payloadOf(sendSpy, 1).message).toContain('超时');
 
-      HandleEvents.handleHttp(buildHttp({ status: 0, elapsedTime: 0 }), BreadCrumbTypes.XHR);
-      expect(payloadOf(sendSpy, 2).message).toContain('跨域');
+      HandleEvents.handleHttp(buildHttp({ status: 0, elapsedTime: 5000 }), BreadCrumbTypes.XHR);
+      expect(payloadOf(sendSpy, 2).message).toContain('超时');
     });
 
     it('status 为 0 且 elapsedTime 缺失时会被判为超时', () => {
@@ -336,11 +354,15 @@ describe('HTTP 错误（XHR / fetch → HTTP_ERROR）', () => {
       expect(payloadOf(sendSpy).message).toContain('超时');
     });
 
-    it('status 为字符串 "0" 时行为不一致：既上报又被判成 ok', () => {
-      // handleHttp 用 Number(status) 判定失败，httpTransform 用 status === 0 严格比较
-      HandleEvents.handleHttp(buildHttp({ status: '0' as unknown as number }), BreadCrumbTypes.XHR);
+    it('status 为字符串 "0" 时按数字 0 处理，判定与 message 保持一致', () => {
+      HandleEvents.handleHttp(
+        buildHttp({ status: '0' as unknown as number, elapsedTime: 10 }),
+        BreadCrumbTypes.XHR,
+      );
       expect(sendSpy).toHaveBeenCalledTimes(1);
-      expect(payloadOf(sendSpy).message).toBe(SpanStatus.Ok);
+      const payload = payloadOf(sendSpy);
+      expect(payload.response.status).toBe(0);
+      expect(payload.message).toContain('跨域');
     });
 
     it('method 缺失时 name 会退化为 "xhr--undefined"', () => {

@@ -1,3 +1,4 @@
+import './helpers/browserEnv';
 import { beforeEach, vi } from 'vitest';
 import { EventTypes } from 'encode-yt-monitor-shared';
 import { _support } from 'encode-yt-monitor-utils';

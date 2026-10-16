@@ -1,15 +1,22 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { createErrorId, getRealPath, options, transportData } from 'encode-yt-monitor-core';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  createErrorId,
+  getRealPath,
+  options,
+  transportData,
+  clearErrorIdCache,
+  getErrorIdCacheSize,
+} from 'encode-yt-monitor-core';
 import { ErrorTypes, EventTypes, HttpTypes } from 'encode-yt-monitor-shared';
 import type { FinalReportType, ReportDataType } from 'encode-yt-monitor-types';
 
 /**
  * 去重：createErrorId 按 type+name+message 生成指纹，
- * 同一指纹在 maxDuplicateCount（默认 2）次以内返回 id，超过返回 null（不再上报）。
+ * 同一指纹在 maxDuplicateCount（默认 2）次以内返回 id，超过返回 null（不再上报），
+ * 直到超过 errorIntervalTime 后额度重置；指纹缓存本身按 maxErrorNumberSize 做 LRU 淘汰。
  *
- * 注意 allErrorNumber 是模块级状态（同一测试文件内共享），因此：
- *  - 每个用例使用「唯一 apikey」（apikey 会参与大多数分支的指纹），隔离各自的去重额度；
- *  - 指纹中不含 apikey 的分支（PROMISE_ERROR 且 name 非 unhandledrejection）使用「唯一 message」隔离。
+ * allErrorNumber 是模块级状态，这里每个用例前都 clearErrorIdCache()，
+ * 保证用例之间互不影响（唯一 apikey / message 只是额外保险）。
  */
 let counter = 0;
 const newKey = () => `key-${++counter}`;
@@ -88,9 +95,24 @@ function makeDefaultError(
   };
 }
 
-// maxDuplicateCount 是全局单例配置，用例改动后必须还原，否则污染其它用例
+/** 用例开始时的全局配置，用例改动后必须还原，否则污染其它用例 */
+const INITIAL_OPTIONS = {
+  maxDuplicateCount: options.maxDuplicateCount,
+  errorIntervalTime: options.errorIntervalTime,
+  maxErrorNumberSize: options.maxErrorNumberSize,
+};
+
+// 指纹缓存是模块级状态，清空后用例之间互不影响（不再依赖「唯一 message」）
+beforeEach(() => {
+  clearErrorIdCache();
+});
+
 afterEach(() => {
-  options.maxDuplicateCount = 2;
+  options.maxDuplicateCount = INITIAL_OPTIONS.maxDuplicateCount;
+  options.errorIntervalTime = INITIAL_OPTIONS.errorIntervalTime;
+  options.maxErrorNumberSize = INITIAL_OPTIONS.maxErrorNumberSize;
+  clearErrorIdCache();
+  vi.useRealTimers();
 });
 
 describe('错误去重（createErrorId）', () => {
@@ -451,5 +473,114 @@ describe('与 transportData.beforePost 集成（去重后不再进入上报流�
     expect(await transportData.beforePost(track)).toBeTruthy();
     expect(await transportData.beforePost(track)).toBeTruthy();
     expect((track as unknown as ReportDataType).errorId).toBeUndefined();
+  });
+});
+
+describe('错误指纹缓存的有界性与淘汰（allErrorNumber）', () => {
+  it('缓存条目数不会超过 maxErrorNumberSize（不再是只增不减）', () => {
+    options.maxErrorNumberSize = 20;
+    for (let i = 0; i < 200; i++) {
+      createErrorId(makeJsError(`bounded-${i}`), `key-${i}`);
+    }
+    expect(getErrorIdCacheSize()).toBeLessThanOrEqual(20);
+  });
+
+  it('默认配置下大量不同指纹也不会撑爆缓存', () => {
+    for (let i = 0; i < 3000; i++) {
+      createErrorId(makeJsError(`default-bounded-${i}`), `key-${i}`);
+    }
+    expect(getErrorIdCacheSize()).toBeLessThanOrEqual(INITIAL_OPTIONS.maxErrorNumberSize);
+  });
+
+  it('被 LRU 淘汰的指纹会重新获得上报额度', () => {
+    options.maxErrorNumberSize = 5;
+    const key = newKey();
+    const msg = `lru-victim-${++counter}`;
+
+    createErrorId(makeJsError(msg), key);
+    createErrorId(makeJsError(msg), key);
+    expect(createErrorId(makeJsError(msg), key)).toBeNull();
+
+    // 塞入足够多的新指纹，把最久未命中的那个挤出去
+    for (let i = 0; i < 10; i++) {
+      createErrorId(makeJsError(`lru-filler-${++counter}`), key);
+    }
+
+    // 被淘汰后计数从 1 重新开始，因此可以再次上报
+    expect(createErrorId(makeJsError(msg), key)).not.toBeNull();
+  });
+
+  it('达到上限后在 errorIntervalTime 内持续去重，超过后额度重置', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    options.errorIntervalTime = 24;
+    const key = newKey();
+    const msg = `interval-${++counter}`;
+
+    expect(createErrorId(makeJsError(msg), key)).not.toBeNull();
+    expect(createErrorId(makeJsError(msg), key)).not.toBeNull();
+    expect(createErrorId(makeJsError(msg), key)).toBeNull();
+
+    // 23 小时后仍在间隔内
+    vi.setSystemTime(new Date('2026-01-01T23:00:00Z'));
+    expect(createErrorId(makeJsError(msg), key)).toBeNull();
+
+    // 25 小时后额度重置，可再次上报；重新计数后依然只能上报 maxDuplicateCount 次
+    vi.setSystemTime(new Date('2026-01-02T01:00:00Z'));
+    expect(createErrorId(makeJsError(msg), key)).not.toBeNull();
+    expect(createErrorId(makeJsError(msg), key)).not.toBeNull();
+    expect(createErrorId(makeJsError(msg), key)).toBeNull();
+  });
+
+  it('errorIntervalTime 的单位是小时（1 → 1 小时，而不是 60 小时）', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    options.errorIntervalTime = 1;
+    const key = newKey();
+    const msg = `unit-${++counter}`;
+
+    createErrorId(makeJsError(msg), key);
+    createErrorId(makeJsError(msg), key);
+    expect(createErrorId(makeJsError(msg), key)).toBeNull();
+
+    vi.setSystemTime(new Date('2026-01-01T00:59:00Z'));
+    expect(createErrorId(makeJsError(msg), key)).toBeNull();
+
+    vi.setSystemTime(new Date('2026-01-01T01:00:01Z'));
+    expect(createErrorId(makeJsError(msg), key)).not.toBeNull();
+  });
+
+  it('长期未命中的指纹会被过期回收', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    options.errorIntervalTime = 24;
+
+    createErrorId(makeJsError(`expire-${++counter}`), newKey());
+    expect(getErrorIdCacheSize()).toBe(1);
+
+    // 48 小时后再产生一个新指纹会触发一次回收，把过期的老指纹删掉
+    vi.setSystemTime(new Date('2026-01-03T00:00:00Z'));
+    createErrorId(makeJsError(`expire-new-${++counter}`), newKey());
+    expect(getErrorIdCacheSize()).toBe(1);
+  });
+
+  it('clearErrorIdCache 可清空缓存并重置去重额度', () => {
+    const key = newKey();
+    const msg = `clear-${++counter}`;
+
+    createErrorId(makeJsError(msg), key);
+    createErrorId(makeJsError(msg), key);
+    expect(createErrorId(makeJsError(msg), key)).toBeNull();
+    expect(getErrorIdCacheSize()).toBe(1);
+
+    clearErrorIdCache();
+    expect(getErrorIdCacheSize()).toBe(0);
+    expect(createErrorId(makeJsError(msg), key)).not.toBeNull();
+  });
+
+  it('errorIntervalTime 与 maxErrorNumberSize 可通过 init 配置', () => {
+    options.bindOptions({ errorIntervalTime: 1, maxErrorNumberSize: 10 });
+    expect(options.errorIntervalTime).toBe(1);
+    expect(options.maxErrorNumberSize).toBe(10);
   });
 });

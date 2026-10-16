@@ -17,6 +17,9 @@ export class Options {
   traceIdFieldName = 'Trace-Id';
   throttleDelayTime = 0;
   maxDuplicateCount = 2;
+  errorIntervalTime = 2; // 同一错误重新上报间隔时间 hour
+  // 错误指纹缓存（allErrorNumber）的最大条目数，超过后按 LRU 淘汰，避免内存只增不减
+  maxErrorNumberSize = 1000;
   // wx-mini
   appOnLaunch: Function = () => {};
   appOnShow: Function = () => {};
@@ -57,6 +60,8 @@ export class Options {
       wxNavigateToMiniProgram,
       triggerWxEvent,
       maxDuplicateCount,
+      errorIntervalTime,
+      maxErrorNumberSize,
       onRouteChange,
     } = options;
     validateOption(beforeAppAjaxSend, 'beforeAppAjaxSend', 'function') &&
@@ -91,6 +96,10 @@ export class Options {
       (this.throttleDelayTime = throttleDelayTime);
     validateOption(maxDuplicateCount, 'maxDuplicateCount', 'number') &&
       (this.maxDuplicateCount = maxDuplicateCount);
+    validateOption(errorIntervalTime, 'errorIntervalTime', 'number') &&
+      (this.errorIntervalTime = errorIntervalTime);
+    validateOption(maxErrorNumberSize, 'maxErrorNumberSize', 'number') &&
+      (this.maxErrorNumberSize = maxErrorNumberSize);
     toStringValidateOption(filterXhrUrlRegExp, 'filterXhrUrlRegExp', '[object RegExp]') &&
       (this.filterXhrUrlRegExp = filterXhrUrlRegExp);
     toStringValidateOption(
