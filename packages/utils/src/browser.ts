@@ -79,11 +79,16 @@ export function extractErrorStack(ex: any, level: Severity): ReportDataType {
   const normal = {
     time: getTimestamp(),
     url: getLocationHref(),
-    name: ex.name,
+    name: ex && ex.name,
     level,
-    message: ex.message,
+    message: ex && ex.message,
   };
-  if (typeof ex.stack === 'undefined' || !ex.stack) {
+  // stack 不一定是字符串（部分库会塞对象 / 数组），此时按「没有堆栈」处理，
+  // 不能让 ex.stack.split 把监控自己的事件回调打挂
+  if (!ex || typeof ex.stack === 'undefined' || !ex.stack) {
+    return normal;
+  }
+  if (typeof ex.stack !== 'string') {
     return normal;
   }
 

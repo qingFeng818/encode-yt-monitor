@@ -3,6 +3,12 @@ import { BreadcrumbPushData } from './breadcrumb';
 import { TransportDataType } from './transportData';
 type CANCEL = null | undefined | boolean;
 
+export type QueueOptions = {
+  /** 同时执行中的异步任务上限，默认 5；<=0 表示不限制 */
+  maxConcurrent?: number;
+  onError?: (err: unknown) => void;
+};
+
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' | 'OPTIONS';
 
 export enum EMethods {
@@ -112,6 +118,10 @@ export interface InitOptions
    * 用于避免长生命周期页面（SPA / 后台系统）中「只增不减」导致的常驻内存增长，<=0 表示不限制条目数
    */
   maxErrorNumberSize?: number;
+  /**
+   * 队列配置项
+   */
+  queueOptions?: QueueOptions;
 }
 
 export interface HooksTypes {

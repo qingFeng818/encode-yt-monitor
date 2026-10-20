@@ -84,7 +84,6 @@ export function createErrorId(data: ReportDataType, apikey: string): number | nu
   const errorId = hashCode(id);
   const now = getTimestamp();
   const lastReportTime = allErrorNumber.get(errorId);
-
   // 同一个错误在 errorIntervalTime 内只上报一次
   if (lastReportTime !== undefined && now - lastReportTime < getErrorIntervalTime()) {
     return null;

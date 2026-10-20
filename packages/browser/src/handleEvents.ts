@@ -86,9 +86,12 @@ const HandleEvents = {
   handleNotErrorInstance(message: string, filename: string, lineno: number, colno: number) {
     let name: string | ErrorTypes = ErrorTypes.UNKNOWN;
     const url = filename || getLocationHref();
-    let msg = message;
-    const matches = message.match(ERROR_TYPE_RE);
-    if (matches[1]) {
+    // ErrorEvent.message 理论上一定是 string，但 polyfill / 自定义事件可能传 undefined，
+    // 这里做一次归一化，避免 message.match 抛错导致错误没有被上报
+    const rawMessage = typeof message === 'string' ? message : unknownToString(message);
+    let msg = rawMessage;
+    const matches = rawMessage.match(ERROR_TYPE_RE);
+    if (matches && matches[1]) {
       name = matches[1];
       msg = matches[2];
     }
@@ -155,9 +158,15 @@ const HandleEvents = {
       level: Severity.Low,
     };
     if (isError(ev.reason)) {
+      const parsedError = extractErrorStack(ev.reason, Severity.Low);
       data = {
         ...data,
-        ...extractErrorStack(ev.reason, Severity.Low),
+        // 堆栈格式无法识别时 extractErrorStack 会返回 null，
+        // 此时用 Error 自身的 name / message 兜底，避免上报成空对象字符串 {}
+        ...(parsedError || {
+          name: ev.reason.name || data.name,
+          message: ev.reason.message || data.message,
+        }),
       };
     }
     breadcrumb.push({

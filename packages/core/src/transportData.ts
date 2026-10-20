@@ -51,7 +51,7 @@ export class TransportData {
   /** 页面是否正在卸载：此时 XHR 可能被浏览器中断，改走 sendBeacon */
   private isUnloading = false;
   constructor() {
-    this.queue = new Queue();
+    this.queue = new Queue(_support.options?.queueOptions || {});
   }
 
   imgRequest(data: any, url: string): void {
@@ -163,6 +163,9 @@ export class TransportData {
           complete: (res: any) => {
             try {
               userComplete?.(res);
+            } catch (error) {
+              // 用户钩子抛错不能影响槽位释放，也不该冒泡成 AppOnError 再触发一次上报
+              logger.error('configReportWxRequest.complete 执行失败：', error);
             } finally {
               resolve();
             }
@@ -210,10 +213,12 @@ export class TransportData {
   getTransportData(data: FinalReportType): TransportDataType {
     return {
       authInfo: this.getAuthInfo(),
-      breadcrumb: breadcrumb.getStack(),
+      // 批量上报会把报文缓存到 batchDelay 之后才发送，这里必须做快照：
+      // breadcrumb / record 都是全局活数组，直接引用会被后续事件继续改写
+      breadcrumb: breadcrumb.getStack().slice(0),
       data,
-      record: this.getRecord(),
-      deviceInfo: this.getDeviceInfo(),
+      record: this.getRecord().slice(0),
+      deviceInfo: { ...this.getDeviceInfo() },
     };
   }
 
@@ -275,6 +280,9 @@ export class TransportData {
     const onPageHide = () => {
       this.isUnloading = true;
       flush(true);
+      // beforeunload 可能被用户取消（比如「离开此页面?」确认框），下个宏任务恢复 XHR；
+      // 真正卸载时页面已被销毁，这个定时器不会再执行
+      setTimeout(() => (this.isUnloading = false), 0);
     };
     doc.addEventListener(
       'visibilitychange',
@@ -353,6 +361,7 @@ export class TransportData {
       enableBatch,
       batchSize,
       batchDelay,
+      queueOptions,
     } = options;
     validateOption(apikey, 'apikey', 'string') && (this.apikey = apikey);
     validateOption(trackKey, 'trackKey', 'string') && (this.trackKey = trackKey);
@@ -372,6 +381,10 @@ export class TransportData {
       (this.configReportUrl = configReportUrl);
     validateOption(configReportWxRequest, 'configReportWxRequest', 'function') &&
       (this.configReportWxRequest = configReportWxRequest);
+    // 队列并发配置在 init 时才能拿到（构造函数阶段 options 还没绑定）
+    if (validateOption(queueOptions, 'queueOptions', 'object') && queueOptions) {
+      this.queue.bindOptions(queueOptions);
+    }
   }
 
   /**
@@ -394,10 +407,23 @@ export class TransportData {
         return;
       }
     }
-    const result = await this.beforePost(data);
+    let result: TransportDataType | false;
+    try {
+      result = await this.beforePost(data);
+    } catch (error) {
+      // beforeDataReport / backTrackerId 等用户钩子抛错时，不能变成 unhandledrejection，
+      // 否则会被 SDK 自己的 unhandledrejection 监听再采集一次，形成自激
+      logger.error('beforePost 执行失败，本次上报已丢弃：', error);
+      return;
+    }
     if (!result) return;
     if (typeof this.configReportUrl === 'function') {
-      dsn = this.configReportUrl(result, dsn);
+      try {
+        dsn = this.configReportUrl(result, dsn);
+      } catch (error) {
+        logger.error('configReportUrl 执行失败，本次上报已丢弃：', error);
+        return;
+      }
       if (!dsn) return;
     }
 

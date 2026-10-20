@@ -124,4 +124,106 @@ describe('Queue 并发控制', () => {
 
     expect(started).toEqual(['a', 'b']);
   });
+
+  it('onError 自身抛错时：同步任务不中断，后续任务继续执行', async () => {
+    const queue = new Queue({
+      onError: () => {
+        throw new Error('onError boom');
+      },
+    });
+    const after = vi.fn();
+
+    queue.addFn(() => {
+      throw new Error('sync boom');
+    });
+    queue.addFn(after);
+    await tick();
+
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(queue.getInFlightCount()).toBe(0);
+  });
+
+  it('onError 自身抛错时：Promise reject 仍然释放槽位，不会卡死队列', async () => {
+    const queue = new Queue({
+      maxConcurrent: 1,
+      onError: () => {
+        throw new Error('onError boom');
+      },
+    });
+    const after = vi.fn();
+
+    queue.addFn(() => Promise.reject(new Error('network')));
+    queue.addFn(after);
+    await tick();
+
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(queue.getInFlightCount()).toBe(0);
+  });
+
+  it('bindOptions 只更新传入字段，调大上限后积压任务会继续执行', async () => {
+    const queue = new Queue({ maxConcurrent: 1 });
+    const onError = vi.fn();
+    // 只传 onError，不应该把 maxConcurrent 重置回默认值 5
+    queue.bindOptions({ onError });
+
+    const started: string[] = [];
+    const pending = () => new Promise<void>(() => undefined);
+    queue.addFn(() => {
+      started.push('a');
+      return pending();
+    });
+    queue.addFn(() => {
+      started.push('b');
+      return pending();
+    });
+
+    await tick();
+    expect(started).toEqual(['a']);
+
+    queue.bindOptions({ maxConcurrent: 2 });
+    await tick();
+    expect(started).toEqual(['a', 'b']);
+  });
+
+  it('clear 丢弃尚未执行的任务', async () => {
+    const queue = new Queue({ maxConcurrent: 1 });
+    const second = vi.fn();
+
+    queue.addFn(() => new Promise<void>(() => undefined));
+    queue.addFn(second);
+    queue.clear();
+    await tick();
+
+    expect(second).not.toHaveBeenCalled();
+    expect(queue.getPendingCount()).toBe(0);
+  });
+
+  it('flushStack 遵守并发上限（flushNow 才无视上限）', () => {
+    const queue = new Queue({ maxConcurrent: 1 });
+    const started: string[] = [];
+    const pending = () => new Promise<void>(() => undefined);
+
+    queue.addFn(() => {
+      started.push('a');
+      return pending();
+    });
+    queue.addFn(() => {
+      started.push('b');
+      return pending();
+    });
+
+    queue.flushStack();
+    expect(started).toEqual(['a']);
+  });
+
+  it('getStack 返回副本，外部修改不影响内部队列', async () => {
+    const queue = new Queue();
+    const fn = vi.fn();
+    queue.addFn(fn);
+
+    queue.getStack().length = 0;
+    await tick();
+
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
 });

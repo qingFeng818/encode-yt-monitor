@@ -190,7 +190,19 @@ export function unknownToString(target: unknown): string {
   if (variableTypeDetection.isUndefined(target)) {
     return 'undefined';
   }
-  return JSON.stringify(target);
+  try {
+    const json = JSON.stringify(target);
+    // Symbol / function 等 JSON.stringify 会返回 undefined，兜底转成可读字符串
+    return json === undefined ? String(target) : json;
+  } catch (error) {
+    // 循环引用、BigInt 混排等场景 JSON.stringify 会抛错，
+    // 监控自身的格式化逻辑不能把异常抛回业务 / 事件回调
+    try {
+      return String(target);
+    } catch (stringifyError) {
+      return Object.prototype.toString.call(target);
+    }
+  }
 }
 
 export function getBigVersion(version: string) {

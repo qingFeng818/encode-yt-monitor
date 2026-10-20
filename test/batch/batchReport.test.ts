@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TransportData } from 'encode-yt-monitor-core';
+import { breadcrumb, TransportData } from 'encode-yt-monitor-core';
+import { BreadCrumbTypes } from 'encode-yt-monitor-shared';
+import { Severity } from 'encode-yt-monitor-utils';
 import type { BatchTransportDataType, FinalReportType } from 'encode-yt-monitor-types';
 
 /**
@@ -97,6 +99,8 @@ beforeEach(() => {
   StubXHR.instances = [];
   (globalThis as any).XMLHttpRequest = StubXHR;
   (window as any).XMLHttpRequest = StubXHR;
+  // breadcrumb 是全局单例，用例之间要隔离
+  breadcrumb.clear();
 });
 
 afterEach(() => {
@@ -279,5 +283,125 @@ describe('批量上报开关（enableBatch）', () => {
     transport.bindOptions({ enableBatch: 'yes' as any, batchSize: '20' as any });
     expect(transport.enableBatch).toBe(true);
     expect(transport.batchSize).toBe(20);
+  });
+
+  it('批量缓冲期间 breadcrumb 做快照，不会被后续事件改写', async () => {
+    const transport = makeTransport({ batchSize: 10, batchDelay: 60_000 });
+    breadcrumb.push({
+      type: BreadCrumbTypes.CLICK,
+      category: 'user',
+      level: Severity.Info,
+      data: { tag: 'first' } as any,
+    });
+
+    await transport.send(track('a'));
+
+    // 入批之后又发生了一次行为：不能污染已经进缓冲的报文
+    breadcrumb.push({
+      type: BreadCrumbTypes.CLICK,
+      category: 'user',
+      level: Severity.Info,
+      data: { tag: 'second' } as any,
+    });
+    await transport.send(track('b'));
+
+    transport.flushBatches();
+    await nextTask();
+
+    const payload = sentBodies()[0] as BatchTransportDataType;
+    expect(payload.data).toHaveLength(2);
+    expect(payload.data[0].breadcrumb).toHaveLength(1);
+    expect((payload.data[0].breadcrumb![0].data as any).tag).toBe('first');
+    expect(payload.data[1].breadcrumb).toHaveLength(2);
+  });
+
+  it('beforeDataReport 抛错时静默丢弃本次上报，不产生未处理拒绝', async () => {
+    const transport = makeTransport();
+    transport.bindOptions({
+      beforeDataReport: () => {
+        throw new Error('hook boom');
+      },
+    });
+
+    await transport.send(track('a'));
+    await nextTask();
+
+    expect(StubXHR.instances).toHaveLength(0);
+  });
+
+  it('beforeDataReport 返回 null 时不进入批量缓冲', async () => {
+    const transport = makeTransport();
+    transport.bindOptions({ beforeDataReport: () => null });
+
+    await transport.send(track('a'));
+    transport.flushBatches();
+    await nextTask();
+
+    expect(StubXHR.instances).toHaveLength(0);
+  });
+
+  it('configReportUrl 抛错时只丢弃当前这一条，后续上报不受影响', async () => {
+    const transport = makeTransport();
+    let shouldThrow = true;
+    transport.bindOptions({
+      configReportUrl: (_event: any, url: string) => {
+        if (shouldThrow) {
+          shouldThrow = false;
+          throw new Error('url boom');
+        }
+        return url;
+      },
+    });
+
+    await transport.send(track('a')); // 被丢弃
+    await transport.send(track('b'));
+    await transport.send(track('c'));
+
+    transport.flushBatches();
+    await nextTask();
+
+    expect(StubXHR.instances).toHaveLength(1);
+    const payload = sentBodies()[0] as BatchTransportDataType;
+    expect(payload.batch).toBe(true);
+    expect(payload.count).toBe(2);
+    expect(payload.data.map((item) => (item.data as any).trackId)).toEqual(['b', 'c']);
+  });
+
+  it('configReportUrl 返回不同 dsn 时按地址分别成批', async () => {
+    const transport = makeTransport();
+    transport.bindOptions({
+      configReportUrl: (event: any) => `https://${event.data.trackId}.example.com/api`,
+    });
+
+    await transport.send(track('a'));
+    await transport.send(track('b'));
+    transport.flushBatches();
+    await nextTask();
+
+    expect(StubXHR.instances.map((xhr) => xhr.url).sort()).toEqual([
+      'https://a.example.com/api',
+      'https://b.example.com/api',
+    ]);
+    // 每个分组只有 1 条，退化为单条协议
+    sentBodies().forEach((body) => expect(body.batch).toBeUndefined());
+  });
+
+  it('init 的 queueOptions 会作用到上报队列（maxConcurrent）', async () => {
+    const transport = new TransportData();
+    transport.bindOptions({ trackDsn: TRACK_DSN, queueOptions: { maxConcurrent: 1 } });
+
+    const started: string[] = [];
+    const pending = () => new Promise<void>(() => undefined);
+    transport.queue.addFn(() => {
+      started.push('a');
+      return pending();
+    });
+    transport.queue.addFn(() => {
+      started.push('b');
+      return pending();
+    });
+
+    await nextTask();
+    expect(started).toEqual(['a']);
   });
 });

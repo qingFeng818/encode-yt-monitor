@@ -1,4 +1,4 @@
-import { InitOptions } from 'encode-yt-monitor-types';
+import { InitOptions, QueueOptions } from 'encode-yt-monitor-types';
 import {
   generateUUID,
   toStringValidateOption,
@@ -36,6 +36,11 @@ export class Options {
   triggerWxEvent: Function = () => {};
   onRouteChange?: Function;
 
+  queueOptions: QueueOptions = {
+    maxConcurrent: 5,
+    onError: console.error,
+  };
+
   constructor() {
     this.enableTraceId = false;
   }
@@ -62,6 +67,7 @@ export class Options {
       errorIntervalTime,
       maxErrorNumberSize,
       onRouteChange,
+      queueOptions,
     } = options;
     validateOption(beforeAppAjaxSend, 'beforeAppAjaxSend', 'function') &&
       (this.beforeAppAjaxSend = beforeAppAjaxSend);
@@ -104,6 +110,8 @@ export class Options {
       'includeHttpUrlTraceIdRegExp',
       '[object RegExp]',
     ) && (this.includeHttpUrlTraceIdRegExp = includeHttpUrlTraceIdRegExp);
+    validateOption(queueOptions, 'queueOptions', 'object') &&
+      (this.queueOptions = queueOptions || this.queueOptions);
   }
 }
 
