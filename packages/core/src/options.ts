@@ -16,9 +16,9 @@ export class Options {
   includeHttpUrlTraceIdRegExp: RegExp;
   traceIdFieldName = 'Trace-Id';
   throttleDelayTime = 0;
-  maxDuplicateCount = 2;
-  errorIntervalTime = 2; // 同一错误重新上报间隔时间 hour
-  // 错误指纹缓存（allErrorNumber）的最大条目数，超过后按 LRU 淘汰，避免内存只增不减
+  // 同一个错误在多长时间内只上报一次（单位：秒），超过该间隔后即可再次上报
+  errorIntervalTime = 30;
+  // 错误指纹缓存（allErrorNumber）最大条目数，超过后按 LRU 淘汰队首，避免内存只增不减
   maxErrorNumberSize = 1000;
   // wx-mini
   appOnLaunch: Function = () => {};
@@ -59,7 +59,6 @@ export class Options {
       onTabItemTap,
       wxNavigateToMiniProgram,
       triggerWxEvent,
-      maxDuplicateCount,
       errorIntervalTime,
       maxErrorNumberSize,
       onRouteChange,
@@ -94,8 +93,6 @@ export class Options {
       (this.traceIdFieldName = traceIdFieldName);
     validateOption(throttleDelayTime, 'throttleDelayTime', 'number') &&
       (this.throttleDelayTime = throttleDelayTime);
-    validateOption(maxDuplicateCount, 'maxDuplicateCount', 'number') &&
-      (this.maxDuplicateCount = maxDuplicateCount);
     validateOption(errorIntervalTime, 'errorIntervalTime', 'number') &&
       (this.errorIntervalTime = errorIntervalTime);
     validateOption(maxErrorNumberSize, 'maxErrorNumberSize', 'number') &&
@@ -132,6 +129,8 @@ export function initOptions(paramOptions: InitOptions = {}) {
   breadcrumb.bindOptions(paramOptions);
   logger.bindOptions(paramOptions.debug);
   transportData.bindOptions(paramOptions);
+  // 批量上报依赖定时器延迟发送，页面隐藏/卸载时兜底 flush，避免丢数据
+  transportData.bindBatchFlushOnHidden();
   options.bindOptions(paramOptions);
 }
 

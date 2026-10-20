@@ -4,66 +4,35 @@ import { ReportDataType } from 'encode-yt-monitor-types';
 import { options } from './options';
 import { getTimestamp } from 'encode-yt-monitor-utils';
 
-/** 一个错误指纹的去重记录 */
-interface ErrorRecord {
-  /** 当前去重周期内已上报的次数，达到 maxDuplicateCount 后不再上报 */
-  count: number;
-  /** 最近一次命中的时间戳，仅用于 LRU / 过期淘汰 */
-  lastSeen: number;
-  /** 上一次额度重置的时间戳，用于 errorIntervalTime 间隔判定 */
-  resetTime: number;
-}
-
 /**
- * 错误指纹 -> 去重记录。
+ * 错误指纹 -> 最近一次「上报」的时间戳。
  *
- * 这里必须是「有界」缓存：长生命周期页面（SPA / 后台系统 / 小程序）会不断产生新的错误指纹，
- * 若只增不删，条目数会随进程存活时间无限增长，且因为被模块级变量强引用而永远无法被 GC，
- * 最终表现为内存持续增长。因此：
- *  - 条目数达到 options.maxErrorNumberSize 时按 LRU（最久未命中）淘汰；
- *  - 命中时把该记录 delete + set 移到 Map 末尾，使迭代顺序等价于 LRU 顺序；
- *  - 新增指纹前先回收一次，保证 size 不会超过上限。
+ * 去重规则（不计数）：同一个指纹在 errorIntervalTime（默认 30s）内只上报一次，
+ * 距上次上报超过该间隔后即可再次上报。
+ *
+ * 内存有界（LRU，不遍历）：Map 的迭代顺序 = 插入顺序，每次真正上报时
+ * delete + set 把该条移到末尾，于是队首就是「最久没有上报过」的一条；
+ * 新增指纹前若 size 已达 maxErrorNumberSize，直接删掉队首，O(1) 完成淘汰。
+ *
+ * 这里刻意不做「按时间遍历清扫」：是否过期在命中时比较时间戳即可判断，
+ * 缓存里残留的陈旧条目不影响正确性，只会被 LRU 自然顶掉。
  */
-const allErrorNumber = new Map<number, ErrorRecord>();
+const allErrorNumber = new Map<number, number>();
 
-/** 全量过期回收的最小间隔，避免每次上报都遍历整个缓存 */
-const ERROR_NUMBER_SWEEP_INTERVAL = 60 * 1000;
-
-/** 上次全量回收的时间戳 */
-let lastSweepTime = 0;
-
-/** 同一个错误达到上报上限后，需要间隔多久（默认 24 小时）才允许重新上报 */
+/** 同一个错误在多长时间内只上报一次（默认 30s） */
 function getErrorIntervalTime(): number {
-  return options.errorIntervalTime * 60 * 60 * 1000;
+  return options.errorIntervalTime * 1000;
 }
 
-/** 把记录标记为「最近使用」：Map 迭代顺序即插入顺序，delete + set 可将其移到末尾 */
-function touchErrorRecord(id: number, record: ErrorRecord, now: number): void {
-  record.lastSeen = now;
+/** 记录本次上报时间，并把它移到 Map 末尾，使迭代顺序等价于 LRU */
+function markAsReported(id: number, now: number): void {
   allErrorNumber.delete(id);
-  allErrorNumber.set(id, record);
+  allErrorNumber.set(id, now);
 }
 
-/**
- * 回收缓存，保证其有界：
- * 1. 先删除超过 errorIntervalTime 没有再命中的记录；
- * 2. 若仍达到 maxErrorNumberSize，按 LRU 顺序淘汰最久未命中的记录。
- * 未超容量上限时只在距上次回收超过 ERROR_NUMBER_SWEEP_INTERVAL 后做一次过期回收，
- * 避免每次上报都全量遍历。
- */
-function evictErrorNumberCache(now: number): void {
+/** 缓存达到上限时删掉队首（最久没有上报过的一条），O(1) 且无需遍历 */
+function evictOldestIfNeeded(): void {
   const maxSize = options.maxErrorNumberSize;
-
-  if (maxSize > 0 && allErrorNumber.size < maxSize) {
-    if (now - lastSweepTime < ERROR_NUMBER_SWEEP_INTERVAL) return;
-  }
-  lastSweepTime = now;
-
-  const expireBefore = now - getErrorIntervalTime();
-  allErrorNumber.forEach((record, key) => {
-    if (record.lastSeen <= expireBefore) allErrorNumber.delete(key);
-  });
-
   if (maxSize <= 0) return;
   while (allErrorNumber.size >= maxSize) {
     const oldest = allErrorNumber.keys().next();
@@ -75,7 +44,6 @@ function evictErrorNumberCache(now: number): void {
 /** 清空错误指纹缓存（测试隔离 / 运行时手动释放） */
 export function clearErrorIdCache(): void {
   allErrorNumber.clear();
-  lastSweepTime = 0;
 }
 
 /** 当前缓存的错误指纹数量（用于观测与验证缓存有界性） */
@@ -115,28 +83,18 @@ export function createErrorId(data: ReportDataType, apikey: string): number | nu
   }
   const errorId = hashCode(id);
   const now = getTimestamp();
-  const existing = allErrorNumber.get(errorId);
+  const lastReportTime = allErrorNumber.get(errorId);
 
-  if (existing) {
-    const isOverflow = existing.count >= options.maxDuplicateCount;
-    // 达到上限且未到重新上报间隔：本次不上报，但仍刷新活跃时间，保证热点指纹不被淘汰
-    if (isOverflow && now - existing.resetTime < getErrorIntervalTime()) {
-      touchErrorRecord(errorId, existing, now);
-      return null;
-    }
-    if (isOverflow) {
-      existing.count = 1;
-      existing.resetTime = now;
-    } else {
-      existing.count++;
-    }
-    touchErrorRecord(errorId, existing, now);
-    return errorId;
+  // 同一个错误在 errorIntervalTime 内只上报一次
+  if (lastReportTime !== undefined && now - lastReportTime < getErrorIntervalTime()) {
+    return null;
   }
 
-  // 新指纹：先回收缓存保证有界，再写入
-  evictErrorNumberCache(now);
-  allErrorNumber.set(errorId, { count: 1, lastSeen: now, resetTime: now });
+  // 新指纹：先淘汰队首保证缓存有界，再记录本次上报时间
+  if (lastReportTime === undefined) {
+    evictOldestIfNeeded();
+  }
+  markAsReported(errorId, now);
   return errorId;
 }
 

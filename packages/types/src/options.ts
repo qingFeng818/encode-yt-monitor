@@ -40,6 +40,24 @@ export interface InitOptions
    */
   useImgUpload?: boolean;
   /**
+   * 批量上报开关，默认 false，保持「一条数据一个请求」的原有协议。
+   *
+   * 开启后，同一个上报地址（dsn）下的多条数据会合并成一个请求发送：
+   * 报文形如 { authInfo, batch: true, count, data: [单条报文, ...] }，
+   * 只攒到 1 条时仍然发送原来的单条报文，服务端可以灰度接入。
+   *
+   * 注意：useImgUpload 为 true 时无法合并（图片上报走 GET query），会自动退化为单条上报。
+   */
+  enableBatch?: boolean;
+  /**
+   * 攒够多少条立即发送，默认 5；<=0 表示不按条数触发，只依赖 batchDelay
+   */
+  batchSize?: number;
+  /**
+   * 批量上报的最大等待时间（毫秒），默认 2000；到点即使没攒够 batchSize 也会发送
+   */
+  batchDelay?: number;
+  /**
    * 每个项目有一个唯一trackKey，给埋点的dsn用的
    */
   trackKey?: string;
@@ -85,15 +103,12 @@ export interface InitOptions
    */
   trackDsn?: string;
   /**
-   * 最多可重复上报同一个错误的次数
-   */
-  maxDuplicateCount?: number;
-  /**
-   * 同一个错误达到 maxDuplicateCount 后，间隔多久才允许重新上报（单位：小时），默认 24
+   * 同一个错误在多长时间内只上报一次（单位：秒），默认 30；
+   * 距上次上报超过该间隔后即可再次上报（去重不再按次数计算）
    */
   errorIntervalTime?: number;
   /**
-   * 错误指纹去重缓存的最大条目数，默认 1000，超过后按 LRU 淘汰；
+   * 错误指纹去重缓存的最大条目数，默认 1000，超过后直接按 LRU 淘汰队首（不遍历）；
    * 用于避免长生命周期页面（SPA / 后台系统）中「只增不减」导致的常驻内存增长，<=0 表示不限制条目数
    */
   maxErrorNumberSize?: number;
