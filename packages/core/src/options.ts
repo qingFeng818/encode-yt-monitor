@@ -20,6 +20,8 @@ export class Options {
   errorIntervalTime = 30;
   // 错误指纹缓存（allErrorNumber）最大条目数，超过后按 LRU 淘汰队首，避免内存只增不减
   maxErrorNumberSize = 1000;
+  // 是否上报静态资源PV、UV
+  isReportStatic = false;
   // wx-mini
   appOnLaunch: Function = () => {};
   appOnShow: Function = () => {};
@@ -68,9 +70,12 @@ export class Options {
       maxErrorNumberSize,
       onRouteChange,
       queueOptions,
+      isReportStatic,
     } = options;
     validateOption(beforeAppAjaxSend, 'beforeAppAjaxSend', 'function') &&
       (this.beforeAppAjaxSend = beforeAppAjaxSend);
+    validateOption(isReportStatic, 'isReportStatic', 'boolean') &&
+      (this.isReportStatic = isReportStatic);
     // wx-mini hooks
     validateOption(appOnLaunch, 'appOnLaunch', 'function') && (this.appOnLaunch = appOnLaunch);
     validateOption(appOnShow, 'appOnShow', 'function') && (this.appOnShow = appOnShow);

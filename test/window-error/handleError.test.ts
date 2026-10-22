@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { HandleEvents } from 'encode-yt-monitor-browser/handleEvents';
 import { breadcrumb, transportData } from 'encode-yt-monitor-core';
 import { BreadCrumbTypes, ErrorTypes } from 'encode-yt-monitor-shared';
-import {
-  createResourceErrorEvent,
-  createScriptErrorEvent,
-} from '../helpers/errorEvents';
+import { createResourceErrorEvent, createScriptErrorEvent } from '../helpers/errorEvents';
 import { SCRIPT_ERROR_FIXTURES, EXPECTED_REPORT_TYPE } from '../helpers/errorFixtures';
+import type { ReportDataType } from 'encode-yt-monitor-types';
 
 describe('window error → HandleEvents.handleError（单元）', () => {
-  let sendSpy: ReturnType<typeof vi.spyOn>;
+  // 注意：vi.spyOn 的 ReturnType 推导出的参数类型是 unknown，
+  // 显式标注 mock 的入参类型，断言时才能安全访问载荷字段
+  let sendSpy: MockInstance<(data: ReportDataType) => Promise<void>>;
   let pushSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -42,20 +43,23 @@ describe('window error → HandleEvents.handleError（单元）', () => {
   });
 
   describe('脚本运行时错误（JAVASCRIPT_ERROR）', () => {
-    it.each(SCRIPT_ERROR_FIXTURES)('$name 应上报且 name 与 Error 一致', ({ name, error, message }) => {
-      const err = error();
-      const event = createScriptErrorEvent({ message, error: err });
-      HandleEvents.handleError(event);
+    it.each(SCRIPT_ERROR_FIXTURES)(
+      '$name 应上报且 name 与 Error 一致',
+      ({ name, error, message }) => {
+        const err = error();
+        const event = createScriptErrorEvent({ message, error: err });
+        HandleEvents.handleError(event);
 
-      expect(sendSpy).toHaveBeenCalledTimes(1);
-      const payload = sendSpy.mock.calls[0][0];
-      expect(payload.type).toBe(EXPECTED_REPORT_TYPE.script);
-      expect(payload.name).toBe(name);
-      expect(payload.message).toBeTruthy();
-      expect(pushSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ type: BreadCrumbTypes.CODE_ERROR }),
-      );
-    });
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+        const payload = sendSpy.mock.calls[0][0];
+        expect(payload.type).toBe(EXPECTED_REPORT_TYPE.script);
+        expect(payload.name).toBe(name);
+        expect(payload.message).toBeTruthy();
+        expect(pushSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ type: BreadCrumbTypes.CODE_ERROR }),
+        );
+      },
+    );
 
     it('无 error 对象时从 message 解析 TypeError（兼容旧式 onerror 字符串）', () => {
       const event = createScriptErrorEvent({

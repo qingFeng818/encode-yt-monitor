@@ -12,7 +12,7 @@ export interface AuthInfo {
 export interface TransportDataType {
   authInfo: AuthInfo;
   breadcrumb?: BreadcrumbPushData[];
-  data?: FinalReportType;
+  data?: FinalReportType | FinalReportType[];
   record?: any[];
   deviceInfo?: DeviceInfo;
 }
@@ -41,17 +41,24 @@ interface ICommonDataType {
   isTrackData?: boolean;
 }
 
-export interface ReportDataType extends ICommonDataType {
+export interface ReportDataBasicType {
   type?: string;
   message?: string;
   url: string;
   name?: string;
-  stack?: any;
   time?: number;
-  errorId?: number;
   level: string;
+  // 页面访问统计（PV/UV）：来源路由、目标路由、页面标题
+  from?: string;
+  to?: string;
+  title?: string;
+}
+
+export interface ReportDataType extends ICommonDataType, ReportDataBasicType {
+  stack?: any;
+  errorId?: number;
   // ajax
-  elapsedTime?: number;
+  elapsedTime?: number; // request time
   request?: {
     httpType?: string;
     traceId?: string;
@@ -63,12 +70,18 @@ export interface ReportDataType extends ICommonDataType {
     status: number;
     data: string | boolean;
   };
+
   // vue
   componentName?: string;
   propsData?: any;
+
   // react ErrorBoundary 的组件树堆栈
   componentStack?: string;
   customTag?: string;
+}
+
+export interface ReportDataPvUv extends ReportDataBasicType, ICommonDataType {
+  count?: number;
 }
 
 export interface TrackReportData extends ICommonDataType {

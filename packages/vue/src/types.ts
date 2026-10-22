@@ -1,5 +1,33 @@
 import { IAnyObject } from 'encode-yt-monitor-types';
 
+/**
+ * 路由对象的最小结构（同时兼容 vue-router 3 / 4）
+ */
+export interface VueRoute {
+  path?: string;
+  fullPath?: string;
+  name?: string | symbol | null;
+  query?: Record<string, unknown>;
+  params?: Record<string, unknown>;
+  matched?: unknown[];
+  [key: string]: any;
+}
+
+export interface VueRouter {
+  afterEach(hook: (to: VueRoute, from: VueRoute) => void): unknown;
+  [key: string]: any;
+}
+
+/**
+ * Vue.use(MonitorVue, { router }) 时传入的配置
+ */
+export interface VueMonitorOptions {
+  router?: VueRouter;
+  reportInterval?: number;
+  reportCount?: number;
+  isReportPvUv?: boolean;
+}
+
 export interface VueInstance {
   config?: VueConfiguration;
   mixin(hooks: { [key: string]: () => void }): void;
@@ -7,6 +35,11 @@ export interface VueInstance {
     warn(...input: any): void;
   };
   version: string;
+  // vue2 的 Vue.prototype，VueRouter 安装后会挂载 $router
+  prototype?: {
+    $router?: VueRouter;
+    [key: string]: any;
+  };
 }
 export interface VueConfiguration {
   silent: boolean;
@@ -17,6 +50,9 @@ export interface VueConfiguration {
   async: boolean;
   globalProperties: {
     $vue: VueInstance;
+    // vue3 中 app.use(router) 后挂载在这里
+    $router?: VueRouter;
+    [key: string]: any;
   };
 }
 export interface ViewModel {

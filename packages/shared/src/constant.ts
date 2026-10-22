@@ -1,6 +1,11 @@
 import { Severity } from 'encode-yt-monitor-utils';
 export type voidFun = () => void;
 
+export enum StaticTypes {
+  PV = 'PV',
+  UV = 'UV',
+}
+
 /**
  * 上报错误类型
  */
@@ -81,6 +86,7 @@ export enum BreadCrumbTypes {
   RESOURCE = 'Resource',
   CODE_ERROR = 'Code Error',
   CUSTOMER = 'Customer',
+  STATIC = 'Static',
 
   APP_ON_SHOW = 'App On Show',
   APP_ON_LAUNCH = 'App On Launch',

@@ -122,6 +122,10 @@ export interface InitOptions
    * 队列配置项
    */
   queueOptions?: QueueOptions;
+  /**
+   * 是否上报静态资源PV、UV
+   */
+  isReportStatic?: boolean;
 }
 
 export interface HooksTypes {

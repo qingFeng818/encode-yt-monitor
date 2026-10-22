@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { HandleEvents } from '../../packages/browser/src/handleEvents';
 import { transportData, breadcrumb } from 'encode-yt-monitor-core';
 import { BreadCrumbTypes, ErrorTypes } from 'encode-yt-monitor-shared';
@@ -8,6 +9,7 @@ import {
   dispatchWindowError,
 } from '../helpers/errorEvents';
 import { SCRIPT_ERROR_FIXTURES } from '../helpers/errorFixtures';
+import type { ReportDataType } from 'encode-yt-monitor-types';
 
 /**
  * 集成：与 listenError 相同 — window capture 阶段 error → handleError
@@ -16,7 +18,7 @@ import { SCRIPT_ERROR_FIXTURES } from '../helpers/errorFixtures';
  * 目标：不仅验证“监听被触发”，更验证上报载荷是否准确携带有效信息。
  */
 describe('window error 监听链路（集成）', () => {
-  let sendSpy: ReturnType<typeof vi.spyOn>;
+  let sendSpy: MockInstance<(data: ReportDataType) => Promise<void>>;
   let pushSpy: ReturnType<typeof vi.spyOn>;
 
   beforeAll(() => {

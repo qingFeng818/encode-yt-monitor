@@ -30,6 +30,17 @@
     "moduleResolution": "Node" /* Specify how TypeScript looks up a file from a given module specifier. */,
     "baseUrl": "./" /* Specify the base directory to resolve non-relative module names. */,
     "paths": {
+      /* 子路径导入（encode-yt-monitor-vue/pv 等）需要单独声明：
+         TS 的 pattern 只允许一个 *，且匹配时取前缀更长的模式，
+         因此按包名逐个声明，才能把 encode-yt-monitor-vue/pv 映射到 packages/vue/src/pv */
+      "encode-yt-monitor-browser/*": ["packages/browser/src/*"],
+      "encode-yt-monitor-core/*": ["packages/core/src/*"],
+      "encode-yt-monitor-react/*": ["packages/react/src/*"],
+      "encode-yt-monitor-shared/*": ["packages/shared/src/*"],
+      "encode-yt-monitor-types/*": ["packages/types/src/*"],
+      "encode-yt-monitor-utils/*": ["packages/utils/src/*"],
+      "encode-yt-monitor-vue/*": ["packages/vue/src/*"],
+      "encode-yt-monitor-web/*": ["packages/web/src/*"],
       "encode-yt-monitor-*": ["packages/*/src/"]
     } /* Specify a set of entries that re-map imports to additional lookup locations. */,
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

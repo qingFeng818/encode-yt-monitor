@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { HandleEvents } from '../../packages/browser/src/handleEvents';
 import { breadcrumb } from 'encode-yt-monitor-core';
 import { BreadCrumbTypes, BreadCrumbCategory } from 'encode-yt-monitor-shared';
+import type { BreadcrumbPushData, Replace } from 'encode-yt-monitor-types';
 
 describe('路由行为采集（history / hashchange，仅面包屑）', () => {
-  let pushSpy: ReturnType<typeof vi.spyOn>;
+  let pushSpy: MockInstance<(data: BreadcrumbPushData) => void>;
 
   beforeEach(() => {
     pushSpy = vi.spyOn(breadcrumb, 'push').mockImplementation(() => undefined);
@@ -20,8 +22,9 @@ describe('路由行为采集（history / hashchange，仅面包屑）', () => {
     const crumb = pushSpy.mock.calls[0][0];
     expect(crumb.type).toBe(BreadCrumbTypes.ROUTE);
     expect(crumb.category).toBe(BreadCrumbCategory.USER);
-    expect(crumb.data.from).toBe('/home');
-    expect(crumb.data.to).toBe('/user/123?tab=info');
+    const routerData = crumb.data as Replace.IRouter;
+    expect(routerData.from).toBe('/home');
+    expect(routerData.to).toBe('/user/123?tab=info');
   });
 
   it('hashchange 应记 ROUTE 面包屑', () => {
@@ -33,6 +36,6 @@ describe('路由行为采集（history / hashchange，仅面包屑）', () => {
 
     const crumb = pushSpy.mock.calls[0][0];
     expect(crumb.type).toBe(BreadCrumbTypes.ROUTE);
-    expect(crumb.data.to).toContain('detail');
+    expect((crumb.data as Replace.IRouter).to).toContain('detail');
   });
 });

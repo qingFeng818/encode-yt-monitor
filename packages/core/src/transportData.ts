@@ -10,7 +10,7 @@ import {
   isEmpty,
 } from 'encode-yt-monitor-utils';
 import { createErrorId } from './errorId';
-import { SDK_NAME, SDK_VERSION } from 'encode-yt-monitor-shared';
+import { SDK_NAME, SDK_VERSION, StaticTypes } from 'encode-yt-monitor-shared';
 import { breadcrumb } from './breadcrumb';
 import {
   AuthInfo,
@@ -21,10 +21,19 @@ import {
   DeviceInfo,
   FinalReportType,
   BatchTransportDataType,
+  ReportDataType,
 } from 'encode-yt-monitor-types';
 
 /** 单条上报请求超时（ms）：避免挂死的请求长期占用队列的并发槽位 */
 const REPORT_REQUEST_TIMEOUT = 10 * 1000;
+
+/**
+ * PV / UV 是统计型数据：同一页面在短时间内被重复访问属于正常业务行为，
+ * 不能按错误指纹（errorId）去重，否则 errorIntervalTime 内的 PV 会被吞掉。
+ */
+function isStatisticData(data: ReportDataType): boolean {
+  return data.type === StaticTypes.PV || data.type === StaticTypes.UV;
+}
 
 export class TransportData {
   queue: Queue;
@@ -90,7 +99,7 @@ export class TransportData {
   }
 
   async beforePost(data: FinalReportType) {
-    if (isReportDataType(data)) {
+    if (isReportDataType(data) && !isStatisticData(data)) {
       const errorId = createErrorId(data, this.apikey);
       if (!errorId) return false;
       data.errorId = errorId;
@@ -103,12 +112,12 @@ export class TransportData {
     return transportData;
   }
 
-  async xhrPost(data: any, url: string) {
+  async xhrPost(data: any, url: string, forceBeacon = false) {
     const requestFun = (): Promise<void> =>
       new Promise<void>((resolve) => {
         const body = JSON.stringify(data);
         // 页面正在卸载：XHR 很可能被浏览器中断，改用 sendBeacon 保证送达
-        if (this.isUnloading && this.sendByBeacon(url, body)) {
+        if ((forceBeacon || this.isUnloading) && this.sendByBeacon(url, body)) {
           resolve();
           return;
         }
@@ -282,7 +291,9 @@ export class TransportData {
       flush(true);
       // beforeunload 可能被用户取消（比如「离开此页面?」确认框），下个宏任务恢复 XHR；
       // 真正卸载时页面已被销毁，这个定时器不会再执行
-      setTimeout(() => (this.isUnloading = false), 0);
+      setTimeout(() => {
+        this.isUnloading = false;
+      }, 0);
     };
     doc.addEventListener(
       'visibilitychange',
@@ -295,13 +306,23 @@ export class TransportData {
       globalObj.addEventListener('pagehide', onPageHide, true);
       globalObj.addEventListener('beforeunload', onPageHide, true);
       // 从 bfcache 恢复后重新走 XHR（pagehide 并不代表页面一定被销毁）
-      globalObj.addEventListener('pageshow', () => (this.isUnloading = false), true);
+      globalObj.addEventListener(
+        'pageshow',
+        () => {
+          this.isUnloading = false;
+        },
+        true,
+      );
     }
   }
 
-  private postReport(dsn: string, payload: TransportDataType | BatchTransportDataType): void {
+  private postReport(
+    dsn: string,
+    payload: TransportDataType | BatchTransportDataType,
+    forceBeacon = false,
+  ): void {
     if (isBrowserEnv) {
-      this.useImgUpload ? this.imgRequest(payload, dsn) : this.xhrPost(payload, dsn);
+      this.useImgUpload ? this.imgRequest(payload, dsn) : this.xhrPost(payload, dsn, forceBeacon);
       return;
     }
     if (isWxMiniEnv) {
@@ -311,13 +332,10 @@ export class TransportData {
 
   private startBatchTimer(dsn: string): void {
     if (this.batchTimers.has(dsn)) return;
-    const timer = setTimeout(
-      () => {
-        this.batchTimers.delete(dsn);
-        this.flushBatch(dsn);
-      },
-      Math.max(this.batchDelay, 0),
-    );
+    const timer = setTimeout(() => {
+      this.batchTimers.delete(dsn);
+      this.flushBatch(dsn);
+    }, Math.max(this.batchDelay, 0));
     // Node / SSR 环境下不要因为等待批量上报而阻止进程退出
     typeof (timer as any).unref === 'function' && (timer as any).unref();
     this.batchTimers.set(dsn, timer);
@@ -428,6 +446,106 @@ export class TransportData {
     }
 
     this.dispatchReport(dsn, result);
+  }
+  /**
+   * 组装 PV/UV 报文。
+   *
+   * 批量上报会把报文缓存到 batchDelay 之后才发送，这里必须做快照：
+   * breadcrumb / record 都是全局活数组，直接引用会被后续事件继续改写。
+   */
+  private buildPvUvReport(data: FinalReportType[]): TransportDataType {
+    return {
+      authInfo: this.getAuthInfo(),
+      breadcrumb: breadcrumb.getStack().slice(0),
+      data,
+      record: this.getRecord().slice(0),
+      deviceInfo: { ...this.getDeviceInfo() },
+    };
+  }
+
+  /**
+   * 应用 configReportUrl 钩子；返回空值表示本次不上报。
+   */
+  private getReportUrl(data: TransportDataType, dsn: string): string | undefined {
+    if (typeof this.configReportUrl !== 'function') return dsn;
+    try {
+      const result = this.configReportUrl(data, dsn);
+      return typeof result === 'string' && result ? result : undefined;
+    } catch (error) {
+      logger.error('configReportUrl 执行失败，本次上报已丢弃：', error);
+      return undefined;
+    }
+  }
+
+  async sendPvUv(data: FinalReportType[]) {
+    let dsn = '';
+    dsn = this.trackDsn;
+    if (isEmpty(dsn)) {
+      logger.error('trackDsn为空，没有传入埋点上报的dsn地址，请在init中传入');
+      return;
+    }
+    let result: TransportDataType | false;
+    try {
+      result = this.buildPvUvReport(data);
+      if (typeof this.beforeDataReport === 'function') {
+        result = await this.beforeDataReport(result);
+        if (!result) return false;
+      }
+    } catch (error) {
+      // beforeDataReport / backTrackerId 等用户钩子抛错时，不能变成 unhandledrejection，
+      // 否则会被 SDK 自己的 unhandledrejection 监听再采集一次，形成自激
+      logger.error('beforePost 执行失败，本次上报已丢弃：', error);
+      return;
+    }
+    this.postPvUvReport(result, dsn);
+  }
+
+  /**
+   * 页面隐藏 / 卸载 / 关闭时的 PV/UV 兜底上报。
+   *
+   * 与 sendPvUv 的区别：
+   * 1. 强制走 sendBeacon：页面销毁阶段 XHR 会被浏览器中断；
+   * 2. 忽略队列并发上限同步发出：卸载后没有下一次调度机会；
+   * 3. beforeDataReport 返回同步值时立即发送，返回 Promise 时尽力在微任务里补发
+   *    （页面被系统杀掉时无法保证送达）。
+   *
+   * 调用方需要保证传入的是「即将丢弃」的数据，这里只负责尽力送达一次。
+   */
+  sendPvUvOnUnload(data: FinalReportType[]): void {
+    if (!data || data.length === 0) return;
+    const dsn = this.trackDsn;
+    // 卸载阶段不打印日志：控制台输出既没人看，也可能被用户的自定义 logger 阻塞
+    if (isEmpty(dsn)) return;
+    let result: TransportDataType | false;
+    try {
+      result = this.buildPvUvReport(data);
+      if (typeof this.beforeDataReport === 'function') {
+        const hooked = this.beforeDataReport(result);
+        if (hooked && typeof (hooked as Promise<TransportDataType>).then === 'function') {
+          (hooked as Promise<TransportDataType | false>)
+            .then((asyncResult) => this.postPvUvReport(asyncResult, dsn, true))
+            .catch((error) => logger.error('beforePost 执行失败，本次上报已丢弃：', error));
+          return;
+        }
+        result = hooked as TransportDataType;
+      }
+    } catch (error) {
+      logger.error('beforePost 执行失败，本次上报已丢弃：', error);
+      return;
+    }
+    this.postPvUvReport(result, dsn, true);
+  }
+
+  /**
+   * 发送 PV/UV 报文。
+   * @param unload 页面卸载场景：强制走 sendBeacon，并同步清空队列
+   */
+  private postPvUvReport(result: TransportDataType | false, dsn: string, unload = false): void {
+    if (!result) return;
+    const url = this.getReportUrl(result, dsn);
+    if (!url) return;
+    this.postReport(url, result, unload);
+    if (unload) this.queue.flushNow();
   }
 
   setEnableBatch(enableBatch: boolean): void {

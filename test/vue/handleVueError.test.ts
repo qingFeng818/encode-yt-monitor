@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { handleVueError } from 'encode-yt-monitor-vue/helper';
 import { MonitorVue } from 'encode-yt-monitor-vue/index';
 import { breadcrumb, transportData } from 'encode-yt-monitor-core';
-import { BreadCrumbTypes, ErrorTypes } from 'encode-yt-monitor-shared';
+import { ErrorTypes } from 'encode-yt-monitor-shared';
 import { Severity } from 'encode-yt-monitor-utils';
 import { SCRIPT_ERROR_FIXTURES, EXPECTED_REPORT_TYPE } from '../helpers/errorFixtures';
 import type { ViewModel, VueInstance } from 'encode-yt-monitor-vue/types';
+import type { ReportDataType } from 'encode-yt-monitor-types';
 
 function createVue3MockVm(componentName = 'DemoCard'): ViewModel {
   return {
@@ -26,7 +28,7 @@ function createVue3Instance(version = '3.4.0'): VueInstance {
 }
 
 describe('Vue 框架错误（errorHandler，非 window.onerror）', () => {
-  let sendSpy: ReturnType<typeof vi.spyOn>;
+  let sendSpy: MockInstance<(data: ReportDataType) => Promise<void>>;
 
   beforeEach(() => {
     sendSpy = vi.spyOn(transportData, 'send').mockImplementation(() => undefined);
@@ -55,6 +57,7 @@ describe('Vue 框架错误（errorHandler，非 window.onerror）', () => {
         $root: {},
         _isVue: true,
         $options: { name: 'Legacy', propsData: { title: 'hi' } },
+        $props: {},
       } as ViewModel;
       const Vue = createVue3Instance('2.7.16');
 

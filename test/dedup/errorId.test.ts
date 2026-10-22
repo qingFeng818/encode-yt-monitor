@@ -7,7 +7,7 @@ import {
   clearErrorIdCache,
   getErrorIdCacheSize,
 } from 'encode-yt-monitor-core';
-import { ErrorTypes, EventTypes, HttpTypes } from 'encode-yt-monitor-shared';
+import { ErrorTypes, EventTypes, HttpTypes, StaticTypes } from 'encode-yt-monitor-shared';
 import type { FinalReportType, ReportDataType } from 'encode-yt-monitor-types';
 
 /**
@@ -379,8 +379,14 @@ describe('Promise 错误（PROMISE_ERROR）指纹', () => {
     it('指纹不含 apikey：不同 apikey 仍命中同一指纹（记录当前实现行为）', () => {
       const msg = `{"code":${++counter}}`;
       const url = 'https://api.example.com/page/1';
-      const a = idOf(makePromiseError({ name: 'ResourceError', message: msg, url }), `key-x-${++counter}`);
-      const b = idOf(makePromiseError({ name: 'ResourceError', message: msg, url }), `key-y-${++counter}`);
+      const a = idOf(
+        makePromiseError({ name: 'ResourceError', message: msg, url }),
+        `key-x-${++counter}`,
+      );
+      const b = idOf(
+        makePromiseError({ name: 'ResourceError', message: msg, url }),
+        `key-y-${++counter}`,
+      );
       expect(a).toBe(b);
     });
   });
@@ -517,6 +523,24 @@ describe('与 transportData.beforePost 集成（去重后不再进入上报流�
     expect(await transportData.beforePost(track)).toBeTruthy();
     expect((track as unknown as ReportDataType).errorId).toBeUndefined();
   });
+
+  it.each([StaticTypes.PV, StaticTypes.UV])(
+    '%s 统计数据不参与错误去重（同一页面重复访问都要上报）',
+    async (type) => {
+      transportData.bindOptions({ apikey: newKey(), dsn: 'https://dsn.example.com/api/report' });
+      const pv: ReportDataType = {
+        type,
+        message: '/order/123',
+        to: '/order/123',
+        from: '/home',
+        url: 'https://a.example.com/#/order/123',
+        level: 'info',
+        time: Date.now(),
+      };
+
+      expect(await transportData.beforePost(pv)).toBeTruthy();
+      expect(await transportData.beforePost(pv)).toBeTruthy();
+      expect(pv.errorId).toBeUndefined();
+    },
+  );
 });
-
-
