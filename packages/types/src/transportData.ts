@@ -82,6 +82,7 @@ export interface ReportDataType extends ICommonDataType, ReportDataBasicType {
 
 export interface ReportDataPvUv extends ReportDataBasicType, ICommonDataType {
   count?: number;
+  isUv?: boolean;
 }
 
 export interface TrackReportData extends ICommonDataType {

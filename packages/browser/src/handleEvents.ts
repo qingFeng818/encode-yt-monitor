@@ -1,4 +1,10 @@
-import { BreadCrumbTypes, ErrorTypes, ERROR_TYPE_RE, HttpTypes } from 'encode-yt-monitor-shared';
+import {
+  BreadCrumbTypes,
+  ErrorTypes,
+  ERROR_TYPE_RE,
+  HttpTypes,
+  StaticTypes,
+} from 'encode-yt-monitor-shared';
 import {
   transportData,
   breadcrumb,
@@ -23,6 +29,8 @@ const HTTP_TYPE_TO_BREADCRUMB: Record<string, BreadCrumbTypes> = {
   [HttpTypes.XHR]: BreadCrumbTypes.XHR,
   [HttpTypes.FETCH]: BreadCrumbTypes.FETCH,
 };
+
+let isFirstPv = true;
 
 const HandleEvents = {
   /**
@@ -125,9 +133,12 @@ const HandleEvents = {
       },
       level: Severity.Info,
     });
-    const { onRouteChange } = options;
+    const { onRouteChange, isReportStatic } = options;
     if (onRouteChange) {
       onRouteChange(from, to);
+    }
+    if (isReportStatic) {
+      HandleEvents.handlePv(data);
     }
   },
   handleHashchange(data: HashChangeEvent): void {
@@ -143,9 +154,12 @@ const HandleEvents = {
       },
       level: Severity.Info,
     });
-    const { onRouteChange } = options;
+    const { onRouteChange, isReportStatic } = options;
     if (onRouteChange) {
       onRouteChange(from, to);
+    }
+    if (isReportStatic) {
+      HandleEvents.handlePv({ from, to });
     }
   },
   handleUnhandleRejection(ev: PromiseRejectionEvent): void {
@@ -176,6 +190,15 @@ const HandleEvents = {
       level: Severity.Error,
     });
     transportData.send(data);
+  },
+  handlePv(data: { from: string; to: string }): void {
+    const { from, to } = data;
+    const reportData = {
+      type: EventTypes.PV,
+      from,
+      to,
+      time: getTimestamp(),
+    };
   },
 };
 
