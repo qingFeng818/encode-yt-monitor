@@ -17,6 +17,7 @@
     <button id="logUpload" onclick="monitorLog()">log上报</button>
     <button id="promiseError" onclick="promiseError()">promiseError</button>
     <button id="hashChange" onclick="hashChange()">改变hash</button>
+    <button id="mergeReport" onclick="mergeReport()">切换合并上报</button>
 
     <a href="/Vue/index.html">跳到Vue页面</a>
     <a href="/React/index.html">跳到React页面</a>
@@ -24,11 +25,15 @@
     <a href="/WebPerformance/index.html">跳到WebPerformance页面</a>
 
     <script>
+      var flag = false;
       function codeError() {
         let a = {};
         a.split('/');
       }
 
+      function mergeReport() {
+        window.encodeMonitor.setEnableBatch(!flag);
+      }
       function promiseError() {
         const promiseWrap = () =>
           new Promise((resolve, reject) => {

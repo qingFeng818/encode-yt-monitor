@@ -1,4 +1,3 @@
-console.log(window.encodeMonitor, 'window.encodeMonitor');
 window.encodeMonitor.init({
   silentConsole: true,
   maxBreadcrumbs: 10,

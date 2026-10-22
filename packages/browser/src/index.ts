@@ -2,7 +2,7 @@ export * from './handleEvents';
 export * from './load';
 export * from './replace';
 import { setupReplace } from './load';
-import { initOptions, log } from 'encode-yt-monitor-core';
+import { initOptions, log, setEnableBatch } from 'encode-yt-monitor-core';
 import { _global } from 'encode-yt-monitor-utils';
 import { SDK_VERSION, SDK_NAME } from 'encode-yt-monitor-shared';
 import { InitOptions } from 'encode-yt-monitor-types';
@@ -17,4 +17,4 @@ function init(options: InitOptions = {}): void {
   webInit(options);
 }
 
-export { SDK_VERSION, SDK_NAME, init, log };
+export { SDK_VERSION, SDK_NAME, init, log, setEnableBatch };

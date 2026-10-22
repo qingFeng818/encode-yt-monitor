@@ -429,6 +429,10 @@ export class TransportData {
 
     this.dispatchReport(dsn, result);
   }
+
+  setEnableBatch(enableBatch: boolean): void {
+    this.enableBatch = enableBatch;
+  }
 }
 
 const transportData = _support.transportData || (_support.transportData = new TransportData());

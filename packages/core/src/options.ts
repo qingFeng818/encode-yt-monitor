@@ -142,4 +142,8 @@ export function initOptions(paramOptions: InitOptions = {}) {
   options.bindOptions(paramOptions);
 }
 
+export function setEnableBatch(enableBatch: boolean): void {
+  transportData.setEnableBatch(enableBatch);
+}
+
 export { options };
