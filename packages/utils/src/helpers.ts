@@ -167,10 +167,22 @@ export function toStringValidateOption(
   return false;
 }
 
-export function silentConsoleScope(callback: Function) {
+/**
+ * 在「不产生 console 面包屑」的作用域内执行 callback。
+ *
+ * 1. 必须在 finally 中恢复开关：callback 抛错时（例如业务自定义的 beforePushBreadcrumb 抛错），
+ *    否则 isLogAddBreadcrumb 会永久停在 false，之后所有 console 面包屑都会静默丢失；
+ * 2. 恢复的是进入前的原值而不是硬编码 true：silentConsoleScope 允许嵌套调用，
+ *    外层已经关闭时内层结束不能把开关错误地打开。
+ */
+export function silentConsoleScope<T>(callback: () => T): T {
+  const prevIsLogAddBreadcrumb = globalVar.isLogAddBreadcrumb;
   globalVar.isLogAddBreadcrumb = false;
-  callback();
-  globalVar.isLogAddBreadcrumb = true;
+  try {
+    return callback();
+  } finally {
+    globalVar.isLogAddBreadcrumb = prevIsLogAddBreadcrumb;
+  }
 }
 
 export function generateUUID(): string {

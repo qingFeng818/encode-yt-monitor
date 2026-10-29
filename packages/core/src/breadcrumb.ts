@@ -18,9 +18,16 @@ export class Breadcrumb {
     if (typeof this.beforePushBreadcrumb === 'function') {
       let result: BreadcrumbPushData = null;
       const beforePushBreadcrumb = this.beforePushBreadcrumb;
-      silentConsoleScope(() => {
-        result = beforePushBreadcrumb(this, data);
-      });
+      try {
+        silentConsoleScope(() => {
+          result = beforePushBreadcrumb(this, data);
+        });
+      } catch (error) {
+        // 业务钩子抛错只能丢弃本条面包屑：异常一旦向上抛出，会顺着
+        // console 拦截 → push → 钩子再抛错 形成自激，甚至栈溢出
+        logger.error('beforePushBreadcrumb 执行失败，本条面包屑已丢弃：', error);
+        return;
+      }
       if (!result) return;
       this.immediatePush(result);
       return;

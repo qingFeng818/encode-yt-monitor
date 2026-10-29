@@ -318,11 +318,46 @@ describe('Promise 错误（PROMISE_ERROR）指纹', () => {
       expect(a).toBe(b);
     });
 
-    it.fails('已知缺陷：非 JSON 字符串 reason 应生成不同 id（当前实现会碰撞）', () => {
+    it('非 JSON 字符串 reason 应生成不同 id（不能退化成同一个指纹）', () => {
       const key = newKey();
       const a = idOf(makePromiseError({ message: 'async boom A' }), key);
       const b = idOf(makePromiseError({ message: 'async boom B' }), key);
+      expect(a).not.toBeNull();
+      expect(b).not.toBeNull();
       expect(a).not.toBe(b);
+    });
+
+    it('非法 JSON（形如 {foo} 但无法解析）按原文参与指纹，不同原文不碰撞', () => {
+      const key = newKey();
+      const a = idOf(makePromiseError({ message: '{foo A}' }), key);
+      const b = idOf(makePromiseError({ message: '{foo B}' }), key);
+      expect(a).not.toBeNull();
+      expect(a).not.toBe(b);
+    });
+
+    it('message 为空串或 undefined 时仍能算出指纹（不返回 null、不碰撞）', () => {
+      const key = newKey();
+      const empty = idOf(makePromiseError({ message: '' }), key);
+      const missing = idOf(makePromiseError({ message: undefined }), key);
+      expect(empty).not.toBeNull();
+      expect(missing).not.toBeNull();
+      // 二者归一化后都为空串，属于「同一个空 reason」，命中同一指纹是预期行为
+      expect(empty).toBe(missing);
+    });
+
+    it('嵌套对象键顺序不同但内容相同应命中同一指纹', () => {
+      const key = newKey();
+      const n = ++counter;
+      const a = idOf(
+        makePromiseError({ message: `{"outer":{"b":${n},"a":1},"list":[{"y":2,"x":1}]}` }),
+        key,
+      );
+      const b = idOf(
+        makePromiseError({ message: `{"list":[{"x":1,"y":2}],"outer":{"a":1,"b":${n}}}` }),
+        key,
+      );
+      expect(a).not.toBeNull();
+      expect(a).toBe(b);
     });
   });
 
@@ -496,6 +531,13 @@ describe('getRealPath 归一化规则（HTTP 指纹依赖）', () => {
     expect(getRealPath('https://a.example.com/order/abc-123')).toBe(
       'https://a.example.com/order/abc-123',
     );
+  });
+
+  it('入参不是字符串时不会抛 TypeError（拦截层可能传 URL 对象）', () => {
+    expect(getRealPath(new URL('https://a.example.com/order/123?x=1') as any)).toBe(
+      'https://a.example.com/order{param}',
+    );
+    expect(getRealPath(undefined as any)).toBe('');
   });
 });
 

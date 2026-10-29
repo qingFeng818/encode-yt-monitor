@@ -368,4 +368,88 @@ describe('HTTP 拦截层（replace.ts / XHR + fetch）', () => {
       }
     });
   });
+
+  describe('拦截层健壮性：埋点异常不能影响业务请求', () => {
+    const setBeforeAppAjaxSend = (fn: Function | undefined) => {
+      (options as any).beforeAppAjaxSend = fn;
+    };
+
+    afterAll(() => {
+      setBeforeAppAjaxSend(undefined);
+    });
+
+    beforeEach(() => {
+      // 用例内可能改坏钩子，先复位成默认空实现
+      setBeforeAppAjaxSend(undefined);
+    });
+
+    it('XHR：beforeAppAjaxSend 抛错时业务请求仍然发出，且不向业务抛异常', () => {
+      setBeforeAppAjaxSend(() => {
+        throw new Error('业务钩子挂了');
+      });
+
+      const xhr: any = new StubXHR();
+      xhr.open('POST', 'https://api.example.com/order/1');
+      expect(() => xhr.send('{"id":1}')).not.toThrow();
+
+      // 关键断言：请求体确实透传给了原始 send
+      expect(xhr.sentBody).toBe('{"id":1}');
+      // 钩子失败不影响后续采集
+      xhr.finish({ status: 500, response: 'boom', responseType: 'text' });
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('XHR：SDK 初始化前创建的实例（无 monitor_xhr）send 直接透传，不抛错也不上报', () => {
+      const xhr: any = new StubXHR();
+      // 没有调用 open，wrapper 内部拿不到埋点元数据
+      expect(() => xhr.send('raw-body')).not.toThrow();
+      expect(xhr.sentBody).toBe('raw-body');
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(pushSpy).not.toHaveBeenCalled();
+    });
+
+    it('XHR：open 传 URL 对象时按字符串上报，不会因 getRealPath 抛错丢数据', () => {
+      const url = new URL('https://api.example.com/order/1');
+      const xhr: any = new StubXHR();
+      xhr.open('POST', url);
+      xhr.send('{}');
+      xhr.finish({ status: 500, response: 'boom', responseType: 'text' });
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(payloadOf(sendSpy).request.url).toBe('https://api.example.com/order/1');
+      expect(payloadOf(sendSpy).message).toContain('https://api.example.com/order{param}');
+    });
+
+    it('fetch：beforeAppAjaxSend 抛错时请求照常发出，且不向业务抛异常', async () => {
+      setBeforeAppAjaxSend(() => {
+        throw new Error('业务钩子挂了');
+      });
+      let called = 0;
+      fetchHandler = async () => {
+        called++;
+        return makeResponse(500, 'boom');
+      };
+
+      await expect(doFetch('https://api.example.com/order/1')).resolves.toBeDefined();
+      await flush();
+
+      expect(called).toBe(1);
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(payloadOf(sendSpy).response.status).toBe(500);
+    });
+
+    it('fetch：第一个参数是 Request 对象时，按其中的 url / method 上报', async () => {
+      fetchHandler = async () => makeResponse(500, 'boom');
+      // jsdom 不提供 Request，这里用等价的鸭子类型对象（拦截层只读取 url / method）
+      const request = { url: 'https://api.example.com/order/1', method: 'post' } as any;
+
+      await doFetch(request);
+      await flush();
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const payload = payloadOf(sendSpy);
+      expect(payload.name).toBe('fetch--POST');
+      expect(payload.request.url).toBe('https://api.example.com/order/1');
+    });
+  });
 });

@@ -182,6 +182,29 @@ describe('批量上报开关（enableBatch）', () => {
     expect((sentBodies()[0] as BatchTransportDataType).count).toBe(2);
   });
 
+  it('运行中关闭批量上报（setEnableBatch(false)）会先冲掉缓冲数据，不丢数据', async () => {
+    const transport = makeTransport({ batchSize: 10, batchDelay: 60_000 });
+
+    await transport.send(track('a'));
+    await transport.send(track('b'));
+    expect(StubXHR.instances).toHaveLength(0);
+
+    transport.setEnableBatch(false);
+    await nextTask();
+
+    // 缓冲中的 2 条仍然按批量协议发出，而不是被静默丢弃
+    expect(StubXHR.instances).toHaveLength(1);
+    const body = sentBodies()[0] as BatchTransportDataType;
+    expect(body.batch).toBe(true);
+    expect(body.count).toBe(2);
+
+    // 关闭后新数据立刻走单条通道
+    await transport.send(track('c'));
+    await nextTask();
+    expect(StubXHR.instances).toHaveLength(2);
+    expect((sentBodies()[1] as any).batch).toBeUndefined();
+  });
+
   it('按 dsn 分组：错误与埋点不会合并到同一个请求', async () => {
     const transport = makeTransport({
       dsn: ERROR_DSN,

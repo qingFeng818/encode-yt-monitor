@@ -232,6 +232,9 @@ export class TransportData {
   }
 
   isSdkTransportUrl(targetUrl: string): boolean {
+    // 入参可能不是字符串（xhr.open / fetch 允许传 URL 对象），
+    // 直接调用 indexOf 会抛 TypeError，把「判断是否自身上报地址」这一步变成新的异常来源
+    if (!targetUrl || !variableTypeDetection.isString(targetUrl)) return false;
     let isSdkDsn = false;
     if (this.errorDsn && targetUrl.indexOf(this.errorDsn) !== -1) {
       isSdkDsn = true;
@@ -386,7 +389,8 @@ export class TransportData {
     validateOption(dsn, 'dsn', 'string') && (this.errorDsn = dsn);
     validateOption(trackDsn, 'trackDsn', 'string') && (this.trackDsn = trackDsn);
     validateOption(useImgUpload, 'useImgUpload', 'boolean') && (this.useImgUpload = useImgUpload);
-    validateOption(enableBatch, 'enableBatch', 'boolean') && (this.enableBatch = enableBatch);
+    // 走 setEnableBatch 而不是直接赋值：重复 init 时把批量关掉也要把缓冲中的报文冲出去
+    validateOption(enableBatch, 'enableBatch', 'boolean') && this.setEnableBatch(enableBatch);
     validateOption(batchSize, 'batchSize', 'number') && (this.batchSize = batchSize);
     validateOption(batchDelay, 'batchDelay', 'number') && (this.batchDelay = batchDelay);
     validateOption(beforeDataReport, 'beforeDataReport', 'function') &&
@@ -549,7 +553,11 @@ export class TransportData {
   }
 
   setEnableBatch(enableBatch: boolean): void {
+    if (this.enableBatch === enableBatch) return;
     this.enableBatch = enableBatch;
+    // 关闭批量上报时，缓冲区里已攒的报文不会再等到 batchSize / batchDelay（定时器已在关闭前
+    // 安排，但后续 dispatchReport 会直接走单条通道），必须立刻冲出去，否则这部分数据永久丢失
+    if (!enableBatch) this.flushBatches();
   }
 }
 

@@ -105,27 +105,53 @@ function generatePromiseErrorId(data: ReportDataType, apikey: string) {
   return data.type + data.name + objectOrder(data.message) + locationUrl;
 }
 
-function objectOrder(reason: any) {
-  const sortFn = (obj: any) => {
-    return Object.keys(obj)
-      .sort()
-      .reduce((total, key) => {
-        if (variableTypeDetection.isObject(obj[key])) {
-          total[key] = sortFn(obj[key]);
-        } else {
-          total[key] = obj[key];
-        }
-        return total;
-      }, {});
-  };
-  try {
-    if (/\{.*\}/.test(reason)) {
-      let obj = JSON.parse(reason);
-      obj = sortFn(obj);
-      return JSON.stringify(obj);
+/**
+ * 递归按 key 排序：保证同一对象（含嵌套对象 / 数组元素）在不同 key 顺序下序列化结果一致。
+ */
+function sortObjectKeys(data: any): any {
+  if (variableTypeDetection.isArray(data)) {
+    return data.map((item) => sortObjectKeys(item));
+  }
+  if (!variableTypeDetection.isObject(data)) {
+    return data;
+  }
+  return Object.keys(data)
+    .sort()
+    .reduce((total, key) => {
+      total[key] = sortObjectKeys(data[key]);
+      return total;
+    }, {} as Record<string, any>);
+}
+
+/**
+ * 把 promise reason 归一化成参与指纹计算的字符串。
+ *
+ * 必须保证「任何输入都返回字符串」：
+ * - reason 是 JSON 对象字符串 → key 排序后重新序列化，忽略顺序差异；
+ * - reason 是其它字符串（reject('boom A')）→ 原样返回；
+ * - reason 是对象 / Error / 数字等 → 稳定序列化（失败退化为 String(reason)）。
+ *
+ * 早期实现只处理了 JSON 字符串分支，其余分支返回 undefined，
+ * 于是所有「非 JSON 的 reason」都会拼出同一个 id，被 errorIntervalTime 去重掉。
+ */
+function objectOrder(reason: any): string {
+  if (reason === undefined || reason === null) return '';
+  if (!variableTypeDetection.isString(reason)) {
+    try {
+      const json = JSON.stringify(sortObjectKeys(reason));
+      // Error / Symbol 等无法 JSON 化的对象会序列化成 '{}' 或 undefined，退化为字符串描述
+      return json === undefined || json === '{}' ? String(reason) : json;
+    } catch (error) {
+      return String(reason);
     }
+  }
+  const text = reason as string;
+  // 只对「看起来是 JSON 对象」的字符串做排序归一化，其余（含非法 JSON）按原文参与指纹
+  if (!/\{.*\}/.test(text)) return text;
+  try {
+    return JSON.stringify(sortObjectKeys(JSON.parse(text)));
   } catch (error) {
-    return reason;
+    return text;
   }
 }
 
@@ -136,7 +162,10 @@ function objectOrder(reason: any) {
  * @param url
  */
 export function getRealPath(url: string): string {
-  return url.replace(/[\?#].*$/, '').replace(/\/\d+([\/]*$)/, '{param}$1');
+  // url 的声明类型虽然是 string，但拦截层拿到的是 xhr.open / fetch 的原始入参（可能是 URL 对象），
+  // 直接调用 replace 会抛 TypeError，把「拼接指纹」这一步变成一次异常、丢掉整条上报
+  const target = variableTypeDetection.isString(url) ? url : url ? String(url) : '';
+  return target.replace(/[\?#].*$/, '').replace(/\/\d+([\/]*$)/, '{param}$1');
 }
 
 /**

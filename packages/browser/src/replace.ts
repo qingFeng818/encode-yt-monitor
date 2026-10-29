@@ -9,6 +9,7 @@ import {
   variableTypeDetection,
   supportsHistory,
   isHttpFail,
+  logger,
 } from 'encode-yt-monitor-utils';
 import {
   transportData,
@@ -69,9 +70,12 @@ function xhrReplace(): void {
   const originalXhrProto = XMLHttpRequest.prototype;
   replaceOld(originalXhrProto, 'open', (originalOpen: voidFun): voidFun => {
     return function (this: MonitorXMLHttpRequest, ...args: any[]): void {
+      // xhr.open 的第二个参数允许是 URL 对象：统一归一化成字符串，
+      // 否则后续 getRealPath / isSdkTransportUrl 拿到对象会直接抛 TypeError（上报丢失）
+      const rawUrl = args[1];
       this.monitor_xhr = {
         method: variableTypeDetection.isString(args[0]) ? args[0].toUpperCase() : args[0],
-        url: args[1],
+        url: variableTypeDetection.isString(rawUrl) ? rawUrl : String(rawUrl ?? ''),
         sTime: getTimestamp(),
         type: HttpTypes.XHR,
       };
@@ -94,12 +98,24 @@ function xhrReplace(): void {
   });
   replaceOld(originalXhrProto, 'send', (originalSend: voidFun): voidFun => {
     return function (this: MonitorXMLHttpRequest, ...args: any[]): void {
+      // SDK 初始化前就创建并发起过 open 的实例没有 monitor_xhr 元数据，
+      // 这里直接透传，避免因为埋点信息缺失把业务请求打断
+      if (!this.monitor_xhr) {
+        originalSend.apply(this, args);
+        return;
+      }
       const { method, url } = this.monitor_xhr;
-      setTraceId(url, (headerFieldName: string, traceId: string) => {
-        this.monitor_xhr.traceId = traceId;
-        this.setRequestHeader(headerFieldName, traceId);
-      });
-      options.beforeAppAjaxSend && options.beforeAppAjaxSend({ method, url }, this);
+      // traceId 注入与业务钩子都是旁路逻辑：一旦抛错必须被兜住，
+      // 否则异常会从 send 抛给业务代码，导致这次请求根本发不出去
+      try {
+        setTraceId(url, (headerFieldName: string, traceId: string) => {
+          this.monitor_xhr.traceId = traceId;
+          this.setRequestHeader(headerFieldName, traceId);
+        });
+        options.beforeAppAjaxSend && options.beforeAppAjaxSend({ method, url }, this);
+      } catch (error) {
+        logger.error('beforeAppAjaxSend / setTraceId 执行失败，已跳过本次请求头注入：', error);
+      }
       on(
         this,
         'abort',
@@ -112,7 +128,7 @@ function xhrReplace(): void {
         this,
         'loadend',
         function (this: MonitorXMLHttpRequest) {
-          if (this.monitor_xhr.isAbort) return;
+          if (!this.monitor_xhr || this.monitor_xhr.isAbort) return;
           if (
             (method === EMethods.Post && transportData.isSdkTransportUrl(url)) ||
             isFilterHttpUrl(url)
@@ -146,23 +162,35 @@ function fetchReplace(): void {
   replaceOld(_global, EventTypes.FETCH, (originalFetch: voidFun) => {
     return function (url: string, config: Partial<Request> = {}): void {
       const sTime = getTimestamp();
+      // fetch 的第一个参数同样允许是 Request 对象，先取出真实的 url / method，
+      // 避免把对象当成字符串 url 上报（getRealPath 会直接抛错，导致该错误丢失）
+      const request = url !== null && typeof url === 'object' ? (url as any) : null;
+      const finalUrl: string =
+        request && typeof request.url === 'string' ? request.url : (url as unknown as string);
       // 统一大写，保证 xhr/fetch 生成的 name（`${type}--${method}`）与去重指纹一致（XHR 侧已 toUpperCase）
-      const method = String((config && config.method) || 'GET').toUpperCase();
+      const method = String(
+        (config && config.method) || (request && request.method) || 'GET',
+      ).toUpperCase();
       let handlerData: MonitorHttp = {
         type: HttpTypes.FETCH,
         method,
-        reqData: config && config.body,
-        url,
+        reqData: (config && config.body) || (request && request.body),
+        url: finalUrl,
       };
       const headers = new Headers(config.headers || {});
       Object.assign(headers, {
         setRequestHeader: headers.set,
       });
-      setTraceId(url, (headerFieldName: string, traceId: string) => {
-        handlerData.traceId = traceId;
-        headers.set(headerFieldName, traceId);
-      });
-      options.beforeAppAjaxSend && options.beforeAppAjaxSend({ method, url }, headers);
+      // 与 XHR 侧一致：注入失败（业务钩子抛错 / header 非法）不能影响业务请求本身
+      try {
+        setTraceId(finalUrl, (headerFieldName: string, traceId: string) => {
+          handlerData.traceId = traceId;
+          headers.set(headerFieldName, traceId);
+        });
+        options.beforeAppAjaxSend && options.beforeAppAjaxSend({ method, url: finalUrl }, headers);
+      } catch (error) {
+        logger.error('beforeAppAjaxSend / setTraceId 执行失败，已跳过本次请求头注入：', error);
+      }
       config = {
         ...config,
         headers,
@@ -182,8 +210,8 @@ function fetchReplace(): void {
           tempRes
             .text()
             .then((data) => {
-              if (method === EMethods.Post && transportData.isSdkTransportUrl(url)) return;
-              if (isFilterHttpUrl(url)) return;
+              if (method === EMethods.Post && transportData.isSdkTransportUrl(finalUrl)) return;
+              if (isFilterHttpUrl(finalUrl)) return;
               // 仅失败请求记录响应体；范围与 handleHttp 的 isError 判定保持一致
               handlerData.responseText = isHttpFail(tempRes.status) ? data : '';
               triggerHandlers(EventTypes.FETCH, handlerData);
@@ -192,8 +220,8 @@ function fetchReplace(): void {
               // body 读取失败（如响应流被 abort、body 已被消费）时，
               // 不带 responseText 继续上报，避免丢事件；同时兜住 promise 防止
               // 这里产生的 unhandledrejection 被 SDK 自身采集
-              if (method === EMethods.Post && transportData.isSdkTransportUrl(url)) return;
-              if (isFilterHttpUrl(url)) return;
+              if (method === EMethods.Post && transportData.isSdkTransportUrl(finalUrl)) return;
+              if (isFilterHttpUrl(finalUrl)) return;
               triggerHandlers(EventTypes.FETCH, handlerData);
             });
           return res;
@@ -206,8 +234,8 @@ function fetchReplace(): void {
             throw err;
           }
           const eTime = getTimestamp();
-          if (method === EMethods.Post && transportData.isSdkTransportUrl(url)) return;
-          if (isFilterHttpUrl(url)) return;
+          if (method === EMethods.Post && transportData.isSdkTransportUrl(finalUrl)) return;
+          if (isFilterHttpUrl(finalUrl)) return;
           handlerData = {
             ...handlerData,
             elapsedTime: eTime - sTime,
