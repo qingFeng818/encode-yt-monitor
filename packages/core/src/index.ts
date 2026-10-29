@@ -6,5 +6,3 @@ export * from './options';
 export * from './errorId';
 export * from './subscribe';
 export * from './reportPv';
-
-export * from './reportPv';

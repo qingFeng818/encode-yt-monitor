@@ -335,10 +335,13 @@ export class TransportData {
 
   private startBatchTimer(dsn: string): void {
     if (this.batchTimers.has(dsn)) return;
-    const timer = setTimeout(() => {
-      this.batchTimers.delete(dsn);
-      this.flushBatch(dsn);
-    }, Math.max(this.batchDelay, 0));
+    const timer = setTimeout(
+      () => {
+        this.batchTimers.delete(dsn);
+        this.flushBatch(dsn);
+      },
+      Math.max(this.batchDelay, 0),
+    );
     // Node / SSR 环境下不要因为等待批量上报而阻止进程退出
     typeof (timer as any).unref === 'function' && (timer as any).unref();
     this.batchTimers.set(dsn, timer);

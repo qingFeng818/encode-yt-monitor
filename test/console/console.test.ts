@@ -19,7 +19,6 @@ describe('console 行为采集（仅面包屑，不上报）', () => {
 
     expect(pushSpy).toHaveBeenCalledTimes(1);
     const crumb = pushSpy.mock.calls[0][0] as BreadCrumbItem;
-    console.log(pushSpy, crumb, 'console');
     expect(crumb.type).toBe(BreadCrumbTypes.CONSOLE);
     expect(crumb.category).toBe(BreadCrumbCategory.DEBUG);
     expect(crumb.level).toBe(severity);

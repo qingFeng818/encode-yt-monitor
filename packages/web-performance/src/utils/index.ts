@@ -71,8 +71,10 @@ export const isEqualArr = (arr1: Array<string>, arr2: Array<string>): boolean =>
     return false;
   }
 
-  const sortArr1 = arr1.sort();
-  const sortArr2 = arr2.sort();
+  // 用副本排序：入参可能是调用方持有的队列（getCCP 的 remoteQueue.queue），
+  // 原地 sort 会悄悄改变调用方数组顺序，后续按顺序取数据就会取错
+  const sortArr1 = [...arr1].sort();
+  const sortArr2 = [...arr2].sort();
 
   return sortArr1.join() === sortArr2.join();
 };
