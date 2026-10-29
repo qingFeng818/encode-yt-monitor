@@ -1,13 +1,13 @@
 import { getFlag, setFlag, silentConsoleScope, Severity } from 'encode-yt-monitor-utils';
 import { EventTypes } from 'encode-yt-monitor-shared';
-import { VueInstance, ViewModel, VueRouter, VueMonitorOptions } from './types';
+import { VueInstance, ViewModel, VueRouter, VueReportPvOptions } from 'encode-yt-monitor-types';
 import { handleVueError } from './helper';
 import { registerVuePv, setupVuePvUv } from './pv';
 
 const hasConsole = typeof console !== 'undefined';
 
 const MonitorVue = {
-  install(Vue: VueInstance, options?: VueRouter | VueMonitorOptions): void {
+  install(Vue: VueInstance, options?: VueRouter | VueReportPvOptions): void {
     if (getFlag(EventTypes.VUE) || !Vue || !Vue.config) return;
     setFlag(EventTypes.VUE, true);
     // vue 提供 warnHandler errorHandler报错信息
@@ -23,7 +23,8 @@ const MonitorVue = {
       }
     };
     try {
-      if (options && options.isReportPvUv) setupVuePvUv(Vue, options);
+      // 兼容 Vue.use(MonitorVue, router) 的旧用法：不传 isReportPvUv 时不开启 PV/UV 采集
+      if (options && (options as VueReportPvOptions).isReportPvUv) setupVuePvUv(Vue, options);
     } catch (error) {
       console.error('MonitorVue install error', error);
     }

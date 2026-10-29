@@ -1,15 +1,12 @@
-import { StaticTypes } from 'encode-yt-monitor-shared';
-import { ReportDataPvUv } from 'encode-yt-monitor-types';
-import { transportData } from 'encode-yt-monitor-core';
 import {
-  _global,
-  getLocationHref,
-  getTimestamp,
-  logger,
-  Severity,
-  validateOption,
-} from 'encode-yt-monitor-utils';
-import { VueInstance, VueMonitorOptions, VueRoute, VueRouter } from './types';
+  ReportPvOptions,
+  VueInstance,
+  VueReportPvOptions,
+  VueRoute,
+  VueRouter,
+} from 'encode-yt-monitor-types';
+import { logger } from 'encode-yt-monitor-utils';
+import { ReportPv } from 'encode-yt-monitor-core';
 
 /**
  * 已经注册过 afterEach 的 router。
@@ -18,92 +15,28 @@ import { VueInstance, VueMonitorOptions, VueRoute, VueRouter } from './types';
  */
 const registeredRouters: VueRouter[] = [];
 
-/** 默认聚合窗口：1 小时内、最多 10 条（按 路由 + 类型 去重后）触发一次上报 */
-const DEFAULT_REPORT_INTERVAL = 1000 * 60 * 60;
-const DEFAULT_REPORT_COUNT = 10;
-
-let firstLoad = true;
-let lastReportTime: number | undefined;
-let reportInterval = DEFAULT_REPORT_INTERVAL;
-let reportCount = DEFAULT_REPORT_COUNT;
-const reportData = new Map<string, ReportDataPvUv>();
-
-/**
- * 未上报 PV/UV 的本地备份 key。
- *
- * 浏览器崩溃 / 被系统杀掉时不会再触发 pagehide，内存里的聚合数据只能靠备份兜底：
- * 写入 sessionStorage 后，下一次进入站点时补发；正常 flush 后立即删除，不会重复上报。
- */
-const PENDING_STORAGE_KEY = 'encode-yt-monitor-pv-uv-pending';
-
-function getSessionStorage(): Storage | undefined {
-  try {
-    // 隐私模式 / 禁用站点数据时，访问 sessionStorage 本身就可能抛错
-    return typeof sessionStorage === 'undefined' ? undefined : sessionStorage;
-  } catch (error) {
-    return undefined;
+let reportPv: ReportPv | null = null;
+const initReportPv = (reportPvOptions: ReportPvOptions) => {
+  if (!reportPv) {
+    reportPv = new ReportPv(reportPvOptions);
+    return;
   }
-}
+  // 重复 install / register 时用最新配置覆盖，避免后面的 reportCount 不生效
+  reportPv.bindOptions(reportPvOptions);
+};
 
-/** 把当前聚合结果写入 sessionStorage，供崩溃 / 被系统杀掉后补发 */
-function persistPending(): void {
-  const storage = getSessionStorage();
-  if (!storage) return;
-  try {
-    if (reportData.size === 0) {
-      storage.removeItem(PENDING_STORAGE_KEY);
-      return;
-    }
-    storage.setItem(PENDING_STORAGE_KEY, JSON.stringify(Array.from(reportData.values())));
-  } catch (error) {
-    // 存储被禁用 / 写满：备份失败不能影响正常上报流程
-  }
+/** 从 install / register 入参里取出 PV 配置（兼容直接传 router 的旧用法） */
+function toPvOptions(param?: VueRouter | ReportPvOptions): ReportPvOptions {
+  if (!param || isVueRouter(param)) return {};
+  const { reportCount, reportInterval } = param;
+  return { reportCount, reportInterval };
 }
-
-function clearPersisted(): void {
-  const storage = getSessionStorage();
-  if (!storage) return;
-  try {
-    storage.removeItem(PENDING_STORAGE_KEY);
-  } catch (error) {
-    // 存储不可用时忽略
-  }
-}
-
-function readPersisted(): ReportDataPvUv[] {
-  const storage = getSessionStorage();
-  if (!storage) return [];
-  try {
-    const raw = storage.getItem(PENDING_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item) => item && typeof item === 'object');
-  } catch (error) {
-    // 内容被其它代码改坏时直接丢弃，避免每次启动都解析失败
-    clearPersisted();
-    return [];
-  }
-}
-
-let isLifecycleBound = false;
-let detachLifecycle: (() => void) | undefined;
 
 /**
  * 判断是不是一个可用的 vue-router 实例（vue-router 3 / 4 都有 afterEach）
  */
 export function isVueRouter(router: unknown): router is VueRouter {
   return !!router && typeof (router as VueRouter).afterEach === 'function';
-}
-
-function InitOptions(options?: VueMonitorOptions | VueRouter) {
-  if (!options) return;
-  if (validateOption(options.reportCount, 'reportCount', 'number')) {
-    reportCount = options.reportCount;
-  }
-  if (validateOption(options.reportInterval, 'reportInterval', 'number')) {
-    reportInterval = options.reportInterval;
-  }
 }
 
 function getRouteFullPath(route?: VueRoute): string {
@@ -119,166 +52,27 @@ function getRouteName(route?: VueRoute): string | undefined {
   return typeof name === 'string' ? name : undefined;
 }
 
-function getPageTitle(): string {
-  try {
-    return typeof document !== 'undefined' && document ? document.title || '' : '';
-  } catch (error) {
-    return '';
-  }
-}
-
-/**
- * 聚合 key：路由 + 类型。
- * 同一个路由在聚合窗口内多次访问合并成一条，用 count 记录次数。
- */
-function getDataKey(data: ReportDataPvUv): string {
-  return `${data.to || data.message || ''}${data.type || ''}`;
-}
-
-function mergeReportData(data: ReportDataPvUv): void {
-  const key = getDataKey(data);
-  const oldData = reportData.get(key);
-  if (!oldData) {
-    reportData.set(key, data);
-  } else {
-    reportData.set(key, {
-      ...oldData,
-      count: (oldData.count || 1) + (data.count || 1),
-    });
-  }
-  // 崩溃 / 被系统杀掉时浏览器不会触发 pagehide，这里同步写一份备份供下次补发
-  persistPending();
-}
-
-/**
- * 把当前聚合的数据一次性发出去。
- * 先取出快照再清空，保证发送失败也不会把数据留在缓存里反复重试。
- * @param unload 页面隐藏 / 卸载场景：强制走 sendBeacon 并同步清空队列
- */
-function flushPvUv(unload = false): void {
-  if (reportData.size === 0) return;
-  lastReportTime = getTimestamp();
-  const data = Array.from(reportData.values());
-  reportData.clear();
-  // 数据已经交给上报层，本地备份同步清掉，避免下次启动重复补发
-  clearPersisted();
-  if (unload) {
-    try {
-      transportData.sendPvUvOnUnload(data);
-    } catch (error) {
-      logger.error('Vue PV/UV 卸载上报失败：', error);
-    }
-    return;
-  }
-  // sendPvUv 是异步方法，内部已兜底 beforePost 的异常，这里再兜底请求分发阶段的异常，
-  // 避免监控自身抛出 unhandledrejection 被再次采集
-  const result = transportData.sendPvUv(data);
-  if (result && typeof result.catch === 'function') {
-    result.catch((error) => logger.error('Vue PV/UV 上报失败：', error));
-  }
-}
-
-/**
- * 补发上一次页面崩溃 / 被系统杀掉时残留在 sessionStorage 里的数据。
- * 没有配置 trackDsn 时保留备份，等用户真正开启埋点后再补发。
- */
-function restorePending(): void {
-  const pending = readPersisted();
-  if (pending.length === 0) return;
-  if (!transportData.trackDsn) return;
-  clearPersisted();
-  const result = transportData.sendPvUv(pending);
-  if (result && typeof result.catch === 'function') {
-    result.catch((error) => logger.error('Vue PV/UV 补发失败：', error));
-  }
-}
-
-/**
- * 注册页面生命周期兜底：隐藏 / 卸载 / 关闭前把未上报的聚合数据发出去。
- *
- * - visibilitychange(hidden)：覆盖率最高（切 tab、锁屏、关闭、移动端切后台），
- *   页面随后可能被系统直接销毁，因此统一走 sendBeacon，避免 XHR 被中断；
- * - pagehide / beforeunload：桌面端关闭、刷新、跳转的兜底；
- * - 聚合缓存为空时不会发送，三个事件重复触发也不会重复上报。
- */
-function bindPvUvLifecycle(): void {
-  if (isLifecycleBound) return;
-  const globalObj = _global as any;
-  const doc = globalObj && globalObj.document;
-  if (!doc || typeof doc.addEventListener !== 'function') return;
-  isLifecycleBound = true;
-
-  const onVisibilityChange = () => {
-    if (doc.visibilityState === 'hidden') flushPvUv(true);
-  };
-  const onPageUnload = () => flushPvUv(true);
-  const useWindow = typeof globalObj.addEventListener === 'function';
-
-  doc.addEventListener('visibilitychange', onVisibilityChange, true);
-  if (useWindow) {
-    globalObj.addEventListener('pagehide', onPageUnload, true);
-    globalObj.addEventListener('beforeunload', onPageUnload, true);
-  }
-
-  detachLifecycle = () => {
-    doc.removeEventListener('visibilitychange', onVisibilityChange, true);
-    if (useWindow && typeof globalObj.removeEventListener === 'function') {
-      globalObj.removeEventListener('pagehide', onPageUnload, true);
-      globalObj.removeEventListener('beforeunload', onPageUnload, true);
-    }
-  };
-
-  // 进来就把上次异常退出残留的数据补发掉
-  try {
-    restorePending();
-  } catch (error) {
-    // 补发失败不能影响采集本身的初始化
-    logger.error('Vue PV/UV 崩溃补发失败', error);
-  }
-}
-
 /**
  * 上报一次页面 PV（首次访问额外产生一条 UV）
  * @param to 目标路由
  * @param from 来源路由
  */
 export function handleVuePv(to?: VueRoute, from?: VueRoute): void {
-  const toPath = getRouteFullPath(to);
-  const now = getTimestamp();
-  const data: ReportDataPvUv = {
-    type: StaticTypes.PV,
-    message: toPath,
-    url: getLocationHref(),
-    name: getRouteName(to),
-    level: Severity.Info,
-    time: now,
-    from: getRouteFullPath(from),
-    to: toPath,
-    title: getPageTitle(),
-    isTrackData: true,
-    count: 1,
-  };
-  mergeReportData(data);
-  if (firstLoad) {
-    firstLoad = false;
-    // 首屏额外记一条 UV，后续访问只累加 PV
-    mergeReportData({ ...data, type: StaticTypes.UV });
-  }
-  // 第一次采集时开始计算聚合窗口
-  if (lastReportTime === undefined) lastReportTime = now;
-  if (reportData.size < reportCount && now - lastReportTime < reportInterval) return;
-  flushPvUv();
+  if (!reportPv) return;
+  // name 用路由名，title 交给采集器取 document.title（与历史报文语义保持一致）
+  reportPv.handlePV(getRouteFullPath(to), getRouteFullPath(from), { name: getRouteName(to) });
 }
 
 /**
  * 注册 vue-router 的 PV 采集，重复注册同一个 router 时直接跳过
  * @param router vue-router 实例
+ * @param options PV/UV 上报配置
  */
-export function registerVuePv(router?: VueRouter | null, options?: VueMonitorOptions): void {
+export function registerVuePv(router?: VueRouter | null, options?: ReportPvOptions): void {
   if (!isVueRouter(router) || registeredRouters.indexOf(router) !== -1) return;
-  bindPvUvLifecycle();
+  // 单独使用 registerVuePv 时也必须初始化采集器，否则 handleVuePv 会静默不工作
+  initReportPv(toPvOptions(options));
   registeredRouters.push(router);
-  if (options) InitOptions(options);
   router.afterEach((to: VueRoute, from: VueRoute) => {
     try {
       handleVuePv(to, from);
@@ -287,6 +81,19 @@ export function registerVuePv(router?: VueRouter | null, options?: VueMonitorOpt
       logger.error('Vue PV 采集失败：', error);
     }
   });
+}
+
+/**
+ * 重置 PV 采集模块级状态（仅用于单测 / 需要彻底重建采集器的场景）。
+ * 会解绑页面生命周期监听并丢弃内存中未上报的聚合数据。
+ */
+export function resetVuePvState(): void {
+  if (reportPv) {
+    reportPv.destroy();
+    reportPv = null;
+  }
+  registeredRouters.length = 0;
+  componentRetryScheduled = false;
 }
 
 function readRouter(getter: () => unknown): VueRouter | undefined {
@@ -300,10 +107,10 @@ function readRouter(getter: () => unknown): VueRouter | undefined {
   }
 }
 
-function getRouterFromInstallParam(param?: VueRouter | VueMonitorOptions): VueRouter | undefined {
+function getRouterFromInstallParam(param?: VueRouter | VueReportPvOptions): VueRouter | undefined {
   if (!param) return undefined;
   if (isVueRouter(param)) return param;
-  const { router } = param as VueMonitorOptions;
+  const { router } = param as VueReportPvOptions;
   return isVueRouter(router) ? router : undefined;
 }
 
@@ -356,20 +163,19 @@ function setupVue2RouterMixin(Vue: VueInstance): void {
  * 4. 若此时还拿不到（例如 app.use(MonitorVue).use(router) 的调用顺序），
  *    等当前同步流程结束后再尝试一次
  */
-export function setupVuePvUv(Vue: VueInstance, options?: VueRouter | VueMonitorOptions): void {
-  InitOptions(options);
-  // 即使暂时拿不到 router，也先把生命周期兜底挂上：
-  // 首屏打开后立刻关闭 / 崩溃时，数据同样需要尽力发出去
-  bindPvUvLifecycle();
+export function setupVuePvUv(Vue: VueInstance, options?: VueRouter | VueReportPvOptions): void {
   const explicitRouter = getRouterFromInstallParam(options);
+  const pvOptions = toPvOptions(options);
+  // 先初始化采集器：即使暂时拿不到 router，也要把上次崩溃残留的数据补发掉
+  initReportPv(pvOptions);
   if (explicitRouter) {
-    registerVuePv(explicitRouter);
+    registerVuePv(explicitRouter, pvOptions);
     return;
   }
 
   const router = getVueRouter(Vue);
   if (router) {
-    registerVuePv(router);
+    registerVuePv(router, pvOptions);
     return;
   }
 
@@ -377,29 +183,8 @@ export function setupVuePvUv(Vue: VueInstance, options?: VueRouter | VueMonitorO
 
   if (typeof Promise !== 'undefined') {
     Promise.resolve()
-      .then(() => registerVuePv(getVueRouter(Vue)))
+      .then(() => registerVuePv(getVueRouter(Vue), pvOptions))
       .catch(() => undefined);
   }
 }
 
-/**
- * 重置 PV/UV 的模块级状态（已注册的 router、首屏标记、聚合缓存、配置）。
- *
- * 仅供单元测试以及需要重新初始化采集状态的场景使用，业务代码不需要调用。
- */
-export function resetVuePvState(): void {
-  registeredRouters.length = 0;
-  firstLoad = true;
-  lastReportTime = undefined;
-  reportInterval = DEFAULT_REPORT_INTERVAL;
-  reportCount = DEFAULT_REPORT_COUNT;
-  reportData.clear();
-  componentRetryScheduled = false;
-  // 解绑生命周期监听并清掉本地备份，避免用例之间互相影响
-  if (detachLifecycle) {
-    detachLifecycle();
-    detachLifecycle = undefined;
-  }
-  isLifecycleBound = false;
-  clearPersisted();
-}

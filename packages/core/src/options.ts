@@ -1,4 +1,4 @@
-import { InitOptions, QueueOptions } from 'encode-yt-monitor-types';
+import { InitOptions, QueueOptions, ReportPvOptions } from 'encode-yt-monitor-types';
 import {
   generateUUID,
   toStringValidateOption,
@@ -22,6 +22,10 @@ export class Options {
   maxErrorNumberSize = 1000;
   // 是否上报静态资源PV、UV
   isReportStatic = false;
+  // 是否上报PV、UV
+  isReportPv = false;
+  // PV、UV 上报配置项
+  reportPvOptions: ReportPvOptions = {};
   // wx-mini
   appOnLaunch: Function = () => {};
   appOnShow: Function = () => {};
@@ -71,11 +75,16 @@ export class Options {
       onRouteChange,
       queueOptions,
       isReportStatic,
+      isReportPv,
+      reportPvOptions,
     } = options;
     validateOption(beforeAppAjaxSend, 'beforeAppAjaxSend', 'function') &&
       (this.beforeAppAjaxSend = beforeAppAjaxSend);
     validateOption(isReportStatic, 'isReportStatic', 'boolean') &&
       (this.isReportStatic = isReportStatic);
+    validateOption(isReportPv, 'isReportPv', 'boolean') && (this.isReportPv = isReportPv);
+    validateOption(reportPvOptions, 'reportPvOptions', 'object') &&
+      (this.reportPvOptions = reportPvOptions);
     // wx-mini hooks
     validateOption(appOnLaunch, 'appOnLaunch', 'function') && (this.appOnLaunch = appOnLaunch);
     validateOption(appOnShow, 'appOnShow', 'function') && (this.appOnShow = appOnShow);

@@ -3,6 +3,20 @@ import { BreadcrumbPushData } from './breadcrumb';
 import { TransportDataType } from './transportData';
 type CANCEL = null | undefined | boolean;
 
+export interface ReportPvOptions {
+  /**
+   * PV/UV 聚合上报间隔（单位：毫秒），默认 1 小时。
+   * 到期后即使没攒够 reportCount，下一次 PV 也会立即上报。
+   */
+  reportInterval?: number;
+  /**
+   * PV/UV 聚合条数阈值，默认 10。
+   * 同一路由在聚合窗口内重复访问会合并成一条，并用 count 累加次数。
+   */
+  reportCount?: number;
+}
+
+
 export type QueueOptions = {
   /** 同时执行中的异步任务上限，默认 5；<=0 表示不限制 */
   maxConcurrent?: number;
@@ -123,9 +137,19 @@ export interface InitOptions
    */
   queueOptions?: QueueOptions;
   /**
-   * 是否上报静态资源PV、UV
+   * 是否上报统计
+   * @deprecated 请改用 isReportPv（浏览器端仍兼容该字段，等价于 isReportPv）
    */
   isReportStatic?: boolean;
+
+  /**
+   * 是否上报PV、UV
+   */
+  isReportPv?: boolean;
+  /**
+   * PV、UV 上报配置项
+   */
+  reportPvOptions?: ReportPvOptions;
 }
 
 export interface HooksTypes {

@@ -1,16 +1,11 @@
-import {
-  BreadCrumbTypes,
-  ErrorTypes,
-  ERROR_TYPE_RE,
-  HttpTypes,
-  StaticTypes,
-} from 'encode-yt-monitor-shared';
+import { BreadCrumbTypes, ErrorTypes, ERROR_TYPE_RE, HttpTypes } from 'encode-yt-monitor-shared';
 import {
   transportData,
   breadcrumb,
   resourceTransform,
   httpTransform,
   options,
+  ReportPv,
 } from 'encode-yt-monitor-core';
 import {
   getLocationHref,
@@ -30,7 +25,13 @@ const HTTP_TYPE_TO_BREADCRUMB: Record<string, BreadCrumbTypes> = {
   [HttpTypes.FETCH]: BreadCrumbTypes.FETCH,
 };
 
-let isFirstPv = true;
+let reportPv: ReportPv | null = null;
+const initReportPv = () => {
+  if (reportPv) return;
+  // isReportStatic 是旧字段，等价于 isReportPv，保留兼容
+  if (!options.isReportPv && !options.isReportStatic) return;
+  reportPv = new ReportPv(options.reportPvOptions);
+};
 
 const HandleEvents = {
   /**
@@ -133,12 +134,13 @@ const HandleEvents = {
       },
       level: Severity.Info,
     });
-    const { onRouteChange, isReportStatic } = options;
+    // isReportStatic 是旧字段，等价于 isReportPv，保留兼容
+    const { onRouteChange, isReportPv, isReportStatic } = options;
     if (onRouteChange) {
       onRouteChange(from, to);
     }
-    if (isReportStatic) {
-      HandleEvents.handlePv(data);
+    if (isReportPv || isReportStatic) {
+      HandleEvents.handlePv({ from, to });
     }
   },
   handleHashchange(data: HashChangeEvent): void {
@@ -154,11 +156,12 @@ const HandleEvents = {
       },
       level: Severity.Info,
     });
-    const { onRouteChange, isReportStatic } = options;
+    // isReportStatic 是旧字段，等价于 isReportPv，保留兼容
+    const { onRouteChange, isReportPv, isReportStatic } = options;
     if (onRouteChange) {
       onRouteChange(from, to);
     }
-    if (isReportStatic) {
+    if (isReportPv || isReportStatic) {
       HandleEvents.handlePv({ from, to });
     }
   },
@@ -193,12 +196,9 @@ const HandleEvents = {
   },
   handlePv(data: { from: string; to: string }): void {
     const { from, to } = data;
-    const reportData = {
-      type: EventTypes.PV,
-      from,
-      to,
-      time: getTimestamp(),
-    };
+    initReportPv();
+    // 面包屑由 transportData 在报文层统一附带，这里不再逐条重复
+    reportPv?.handlePV(to, from);
   },
 };
 

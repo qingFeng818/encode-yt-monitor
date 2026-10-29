@@ -8,9 +8,8 @@ import {
   extractErrorStack,
 } from 'encode-yt-monitor-utils';
 import { ErrorTypes, BreadCrumbTypes } from 'encode-yt-monitor-shared';
-import { ViewModel, VueInstance } from './types';
 import { breadcrumb, transportData } from 'encode-yt-monitor-core';
-import { ReportDataType } from 'encode-yt-monitor-types';
+import { ReportDataType, ViewModel, VueInstance } from 'encode-yt-monitor-types';
 
 export function handleVueError(
   err: Error,
