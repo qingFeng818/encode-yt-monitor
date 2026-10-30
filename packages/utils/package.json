@@ -2,10 +2,26 @@
   "name": "encode-yt-monitor-utils",
   "version": "0.0.16",
   "description": "前端稳定性监控 通用函数",
-  "main": "dist/index.global.js",
-  "module": "dist/index.mjs",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "unpkg": "dist/index.global.js",
+  "jsdelivr": "dist/index.global.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "encode-bundle src/index.ts  --format iife,cjs,esm --dts --minify --global-name encodeMonitor",
     "build:es5": "encode-bundle src/index.ts --format iife,cjs,esm --dts --minify --global-name encodeMonitor --target es5",
