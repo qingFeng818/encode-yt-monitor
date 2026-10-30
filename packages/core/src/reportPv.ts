@@ -37,6 +37,8 @@ export interface HandlePvOptions {
 class ReportPv {
   /** 是否还没上报过 UV（每次页面加载只有首次 PV 计 UV） */
   isUv: boolean = true;
+  /** 聚合上报定时器 */
+  timer: NodeJS.Timeout | undefined;
   /** 上次上报时间戳（毫秒） */
   lastReportTime: number | undefined;
   /** 聚合上报间隔（毫秒） */
@@ -54,6 +56,13 @@ class ReportPv {
     this.bindPvUvLifecycle();
     if (options) {
       this.bindOptions(options);
+    }
+  }
+
+  clearTimer(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
   }
 
@@ -180,6 +189,7 @@ class ReportPv {
     this.reportData.clear();
     // 数据已经交给上报层，本地备份同步清掉，避免下次启动重复补发
     this.clearPersisted();
+    this.clearTimer();
     try {
       if (unload) {
         transportData.sendPvUvOnUnload(data);
@@ -303,8 +313,17 @@ class ReportPv {
 
     // 第一次采集时开始计算聚合窗口
     if (this.lastReportTime === undefined) this.lastReportTime = now;
-    if (this.reportData.size < this.reportCount && now - this.lastReportTime < this.reportInterval)
+    if (
+      this.reportData.size < this.reportCount &&
+      now - this.lastReportTime < this.reportInterval
+    ) {
+      if (this.timer) return;
+      this.timer = setTimeout(() => {
+        this.flushPvUv();
+        this.clearTimer();
+      }, this.reportInterval);
       return;
+    }
     this.flushPvUv();
   }
 }

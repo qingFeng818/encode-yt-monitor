@@ -52,7 +52,7 @@ export class TransportData {
   /** 攒够多少条立即发送 */
   batchSize = 5;
   /** 批量上报的最大等待时间（ms），到点即使没攒够 batchSize 也会发送 */
-  batchDelay = 2000;
+  batchDelay = 5 * 60 * 1000;
   /** dsn -> 待合并的报文；按 dsn 分组，避免错误与埋点串到同一个上报地址 */
   private batchBuffer: Map<string, TransportDataType[]> = new Map();
   private batchTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();

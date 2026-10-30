@@ -30,4 +30,5 @@ export const ServerUrls = {
   normalPost: '/normal/post',
   exceptionPost: '/exception/post',
   errorsUpload: '/errors/upload',
+  pvUpload: '/pv/upload',
 };

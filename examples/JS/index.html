@@ -19,16 +19,88 @@
     <button id="hashChange" onclick="hashChange()">改变hash</button>
     <button id="mergeReport" onclick="mergeReport()">切换合并上报</button>
 
+    <button id="popState" onclick="pushState('/user/profile')">pushState profile</button>
+    <button id="popState" onclick="pushState('/user/orders')">pushState orders</button>
+
     <a href="/Vue/index.html">跳到Vue页面</a>
     <a href="/React/index.html">跳到React页面</a>
     <a href="/Vue3/index.html">跳到Vue3页面</a>
     <a href="/WebPerformance/index.html">跳到WebPerformance页面</a>
 
+    <div id="app"></div>
+    <script src="./index.js"></script>
+
     <script>
+      const Home = () => `
+  <div>
+    <h1>首页</h1>
+    <p>欢迎来到首页</p>
+  </div>
+`;
+
+      const UserLayout = () => `
+  <div>
+    <h1>用户中心</h1>
+
+1      <a href="/user/profile" data-router-link>
+        用户资料
+      </a>
+
+      <a href="/user/orders" data-router-link>
+        用户订单
+      </a>
+    </nav>
+
+    <hr>
+
+    <router-view></router-view>
+  </div>
+`;
+
+      const UserProfile = () => `
+  <div>
+    <h2>用户资料</h2>
+    <p>这里是用户资料页面</p>
+  </div>
+`;
+
+      const UserOrders = () => `
+  <div>
+    <h2>用户订单</h2>
+    <p>这里是用户订单页面</p>
+  </div>
+`;
+      const routes = [
+        {
+          path: '/',
+          component: Home,
+        },
+        {
+          path: '/user',
+          component: UserLayout,
+          children: [
+            {
+              path: 'profile',
+              component: UserProfile,
+            },
+            {
+              path: 'orders',
+              component: UserOrders,
+            },
+          ],
+        },
+      ];
+      const router = new window.Router(routes);
       var flag = false;
       function codeError() {
         let a = {};
         a.split('/');
+      }
+      function pushState(url) {
+        const state = {
+          id: '1',
+        };
+        router.push(state, url);
       }
 
       function mergeReport() {

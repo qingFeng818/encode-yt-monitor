@@ -295,6 +295,7 @@ function historyReplace(): void {
   const oldOnpopstate = _global.onpopstate;
 
   _global.onpopstate = function (this: WindowEventHandlers, ...args: any[]): any {
+    console.log('poppopstate', args);
     const to = getLocationHref();
     const from = lastHref;
     lastHref = to;

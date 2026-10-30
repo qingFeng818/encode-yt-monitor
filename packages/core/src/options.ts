@@ -17,7 +17,7 @@ export class Options {
   traceIdFieldName = 'Trace-Id';
   throttleDelayTime = 0;
   // 同一个错误在多长时间内只上报一次（单位：秒），超过该间隔后即可再次上报
-  errorIntervalTime = 30;
+  errorIntervalTime = 5 * 60;
   // 错误指纹缓存（allErrorNumber）最大条目数，超过后按 LRU 淘汰队首，避免内存只增不减
   maxErrorNumberSize = 1000;
   // 是否上报静态资源PV、UV

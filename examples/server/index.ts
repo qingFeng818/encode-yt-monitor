@@ -3,7 +3,7 @@ import http from 'http';
 import { port, FilePaths, ServerUrls } from './config';
 import opn from 'open';
 const app = express();
-
+app.use(express.json());
 const url = `http://localhost:${port}/JS/index.html`;
 Object.entries(FilePaths).forEach(([path, resolvePath]) => {
   app.use(path, express.static(resolvePath));
@@ -27,7 +27,17 @@ app.post(ServerUrls.exceptionPost, (req, res) => {
 });
 
 app.post(ServerUrls.errorsUpload, (req, res) => {
+  console.log('错误上报请求体:');
   res.send('错误上报成功');
+});
+
+app.get(ServerUrls.pvUpload, (req, res) => {
+  console.log('PV上报请求体:', req.body);
+  res.send('PV上报成功');
+});
+app.post(ServerUrls.pvUpload, (req, res) => {
+  console.log('PV上报请求体:', req.body);
+  res.send('PV上报成功');
 });
 
 const server = http.createServer(app);
