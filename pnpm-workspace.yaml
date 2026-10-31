@@ -1,2 +1,4 @@
 packages:
   - 'packages/**'
+  # 管理后台（Vue 3 + Vite），与 SDK 包共用同一个 lockfile
+  - 'admin'

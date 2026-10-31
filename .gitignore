@@ -13,4 +13,7 @@ analyzer.html
 packages/*/dist
 packages/*/node_modules
 
+# demo 采集端本地数据（sqlite / json）
+examples/server/.data
+
 example/
